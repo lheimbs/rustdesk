@@ -151,7 +151,8 @@ pub fn core_main() -> Option<Vec<String>> {
             && (is_quick_support_exe(&arg_exe)
                 || config::LocalConfig::get_option("pre-elevate-service") == "Y"
                 || (!click_setup && crate::platform::is_elevated(None).unwrap_or(false)));
-        crate::portable_service::client::set_quick_support(_is_quick_support);
+        _is_quick_support = false;
+        crate::portable_service::client::set_quick_support(false);
     }
     let mut log_name = "".to_owned();
     // Keep portable-service logs under a stable directory name.
