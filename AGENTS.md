@@ -1,5 +1,155 @@
 # RustDesk Guide
 
+## Fork Mission: Trustworthy Personal-Support Build
+
+This fork exists so one person can use RustDesk for personal remote support with
+**no vendor dependency, no hidden outbound traffic, and no opaque binaries**.
+Everything below this section is the upstream contributor guide and still applies
+(minimal diffs, additive hooks, no drive-by refactors). Where the two conflict,
+this section wins for anything that touches network egress, third-party code,
+or release artifacts.
+
+The detailed, phased plan is `docs/TRUST_HARDENING_PLAN.md`; follow it and keep it current.
+In this fork the plan overrides two upstream rules below: `libs/hbb_common` may be inlined
+and edited directly (the "submodule / put client-only code in libs/base" guidance no longer
+applies), and network-egress code is deleted or hard-stubbed rather than kept behind a
+"feature off runs the old code" path.
+
+### Threat model
+
+* Trusted: the user's own self-hosted `hbbs`/`hbbr` (open-source `rustdesk-server`),
+  their own machines, source in this repo.
+* Untrusted by default: any `*.rustdesk.com` / `*.rustdesk.cn` host, the
+  `rustdesk` and `rustdesk-org` GitHub orgs as *binary* suppliers, prebuilt
+  drivers/DLLs, the closed-source RustDesk Pro server and its API, and any
+  remote party able to push config to a client.
+* Goal: a client that talks to nothing except a server the user configured
+  and the peer they chose, and that can be rebuilt from audited source.
+
+### Deployment target: self-hosted server
+
+* Server side is the open-source `rustdesk-server` (`hbbs` rendezvous + `hbbr` relay, AGPL-3.0),
+  built from source at a pinned commit, run by the user. Do not use the Pro server or its API.
+* The client's only configuration is: `custom-rendezvous-server` (hbbs host), `relay-server`
+  (hbbr host) and `key` (contents of hbbs's `id_ed25519.pub`). Bake these in at build time
+  (or fail with a clear error when absent); never fall back to vendor values.
+* Run hbbs with `-k _` (reject clients lacking the key) so only builds carrying the user's key
+  can register. Consider IP allow-listing on hbbs/hbbr and always set a permanent
+  password plus `approve-mode`/whitelist on the controlled side.
+* The server repo and its dependencies need the same audit as this one (C1-style pins,
+  `cargo audit`, own build). Treat it as in scope for the egress test: hbbs/hbbr must make
+  no outbound connections.
+
+### Audit findings (as of 2026-10-04, master @ e5bc204fe)
+
+Licensing context: the repo is AGPL-3.0 (`LICENCE`), so the client source is
+genuinely open. The "proprietary" concerns are the things *around* it: the Pro
+server, bundled binaries, and the vendor-controlled defaults.
+
+**A. Vendor-controlled network egress (highest priority)**
+
+| # | Finding | Where |
+|---|---------|-------|
+| A1 | Default rendezvous/relay servers and the vendor public key (`RENDEZVOUS_SERVERS`, `RS_PUB_KEY`, `PROD_RENDEZVOUS_SERVER`) are compiled in, so an unconfigured client registers its ID and IP with vendor infrastructure. **Verified 2026-10-04** in `libs/hbb_common/src/config.rs:117-118`: `RENDEZVOUS_SERVERS = ["rs-ny.rustdesk.com"]` and `RS_PUB_KEY = "OeVuKk5n…"`; an unconfigured client was measured dialling `rs-ny.rustdesk.com:21116` (see plan §2a). | `libs/hbb_common/src/config.rs`, used in `src/client.rs:468,1650,2946` |
+| A2 | Update check POSTs to `https://api.rustdesk.com/version/latest`, enabled by default, skipped only for "custom clients". | `src/common.rs:1020-1075` |
+| A3 | Default API server falls back to `https://admin.rustdesk.com`. Heartbeat and sysinfo upload (hostname, OS username, version, UUID, ID, address-book/strategy presets) go to `{api}/api/heartbeat` and `/api/sysinfo` every 15 s once an API server resolves. | `src/common.rs:1143-1163`, `src/hbbs_http/sync.rs` |
+| A4 | `is_public()` hard-codes `rustdesk.com` as the "public" host; several code paths branch on it (TLS/proxy choice, API behaviour). | `src/common.rs:1166`, call sites at `:1213,:1226,:1250` |
+| A5 | Server-pushed "strategy" can overwrite client config (`StrategyOptions.config_options`); `allow-remote-config-modification` exists as an option. A hostile or compromised API server can therefore change local settings. | `src/hbbs_http/sync.rs`, `libs/base/src/config/keys.rs:55` |
+| A6 | Windows: API/server config can be read from the **executable file name** (`get_license_from_exe_name`), so a renamed binary silently redirects the client. | `src/common.rs:1131`, `src/platform/windows.rs` |
+| A7 | Session-recording upload and login-option fetch hit the configured API server. | `src/hbbs_http/record_upload.rs`, `account.rs` |
+| A8 | Hard-coded vendor URLs in the UI (privacy page, download, pricing, docs). Low risk, but they are click-through leaks and social-engineering surface. | `grep rustdesk.com flutter/lib src` |
+
+**B. Closed-source or unauditable binaries pulled into builds**
+
+| # | Finding | Where |
+|---|---------|-------|
+| B1 | Windows virtual-display driver `usbmmidd_v2.zip` (third-party, closed, kernel-adjacent) downloaded from a `rustdesk-org` release. | `.github/workflows/*`, `libs/virtual_display` |
+| B2 | Windows printer driver zips + `sha256sums` fetched from `rustdesk/hbb_common` releases (a binary host inside the shared submodule repo). | `.github/workflows/*`, `libs/remote_printer` |
+| B3 | Custom Flutter **engine** binaries from `rustdesk/engine` releases, and `rustdesk_thirdparty_lib` prebuilt libs. | `.github/workflows/flutter-build.yml`, `build.py:91` |
+| B4 | Sciter SDK (legacy UI) is proprietary freeware, not OSI-open. Already deprecated. | `src/ui/`, `Cargo.toml` (`sciter-rs`), `inline` feature |
+| B5 | `doc.rustdesk.com` `web_deps.tar.gz` prebuilt web client assets. | workflows |
+| B6 | `hwcodec` / `vram` / `mediacodec` features pull vendor GPU codec SDKs (NVENC/AMF/QSV). Opt-in, but not auditable. | `Cargo.toml:30-32`, `libs/scrap` |
+
+**C. Supply chain**
+
+| # | Finding | Where |
+|---|---------|-------|
+| C1 | ~25 Cargo dependencies are pinned to **branches** (not revs) of forks under `rustdesk-org` (`rdev`, `cpal`, `arboard`, `tao`, `tungstenite-rs`, `webrtc`, `wezterm`, `kcp-sys`, `evdev`, `impersonate-system`, ...). Branch pins move without a diff in this repo. | `Cargo.toml:67-253` |
+| C2 | `hbb_common` is a submodule of the vendor repo, tracked by commit but fetched from upstream. | `.gitmodules` |
+| C3 | Flutter plugins from `rustdesk-org` and an individual's fork (`21pages/flutter-desktop-embedding`), pinned by commit but unreviewed. | `flutter/pubspec.yaml:41-109` |
+| C4 | `build.py` clones `vcpkg`, `flutter_rust_bridge` from a third-party fork, and pulls a Flutter tarball over plain wget, unpinned. | `build.py:191-204` |
+| C5 | Signing and notarisation use the vendor's identities; release artifacts from the vendor cannot be tied to this source. | `.github/`, `build.py` |
+
+**D. Things checked and found clean**
+
+* No Sentry/Crashlytics/Firebase/Mixpanel/Umeng/Baidu/Tencent SDK in the source.
+  Firebase appears only commented out in `flutter/lib/main.dart` and stripped by `flutter/build_fdroid.sh`.
+* No bundled `.dll/.so/.exe/.jar/.aar` files are committed (only icon fonts).
+* Existing opt-outs that should be forced on rather than relied on:
+  `OPTION_ENABLE_CHECK_UPDATE`, `OPTION_ALLOW_AUTO_UPDATE`, `Config::no_register_device()`
+  (empties the API server, see `get_api_server`), `OPTION_WHITELIST`, `OPTION_APPROVE_MODE`,
+  `OPTION_DISABLE_UDP`, `OPTION_ALLOW_WEBSOCKET`.
+
+**E. Honest caveat on the "China connections" claim**
+
+Nothing in this tree contains China-specific telemetry or a backdoor. The concern is
+structural: the company operates the default servers. Correction from the first draft of
+this table: `hbb_common` contains **no** `rs-cn` default, only `rs-ny.rustdesk.com`. Treat it as a
+*default-trust* problem, fixed by A1-A7 and B/C below, not as evidence of malicious code.
+The 35 git-sourced crates were also pattern-audited and showed no backdoor or telemetry
+(plan §2a); transitive crates.io dependencies are covered by `cargo audit` (plan U7).
+
+### Work plan (do in this order; one PR-sized change each)
+
+1. **Vendor `hbb_common`.** Initialise and audit it, then decide: fork it under the
+   user's own account and repoint `.gitmodules`, or inline it. Confirm the real values
+   of A1 before any other change. Record the audited commit here.
+2. **Remove default vendor endpoints (A1-A4, A8).** Empty `RENDEZVOUS_SERVERS`, `RS_PUB_KEY`
+   and `PROD_RENDEZVOUS_SERVER`; require the user's own server + key. Delete the update check
+   and the `admin.rustdesk.com` fallback rather than defaulting them off. Make `is_public()`
+   return `false` and drop the branches that depend on it. Remove vendor links from the UI.
+3. **Cut the Pro/API surface (A3, A5-A7).** The deployment is self-hosted with the open-source
+   `hbbs`/`hbbr`, which provide only rendezvous and relay. The HTTP API on port 21114
+   (accounts, address book, strategy, devices, audit, heartbeat/sysinfo) belongs to the closed
+   Pro server and has no counterpart in the OSS server. Delete the `src/hbbs_http/{sync,account,record_upload}.rs`
+   call paths, the address-book/strategy/device/login UI, and the exe-name licence parsing
+   outright, rather than defaulting them off.
+4. **Egress test.** Add a single regression test or script that runs the client against a
+   local `hbbs` and asserts no connection to any host other than that server and the peer
+   (`strace -f -e trace=connect`, or a network namespace with default-deny). Run before every release.
+5. **Pin the supply chain (C1-C4).** Convert branch pins to full `rev =`, run `cargo vendor`
+   or fork the critical crates under the user's account, `cargo deny` / `cargo audit` in CI,
+   pin the Flutter SDK and `vcpkg` baseline, replace unpinned `wget`/`git clone` in `build.py`.
+6. **Replace or drop binary blobs (B1-B6).** Linux-first: ship no Windows driver at all.
+   Drop Sciter and the `inline` feature. Do not enable `hwcodec`/`vram` in release builds.
+   If Windows is needed later, build the IDD driver from source or omit virtual display and printing.
+7. **Build and sign your own.** Reproducible build from a clean checkout, own signing key,
+   published checksums, own package names and app ID so it cannot be confused with or
+   auto-updated by upstream.
+8. **Rebrand to Handover** (`me.heimbs.Handover`), personal use. Windows controlled side (installed
+   mode + service, attended-only) and Linux Wayland controller (outgoing-only). Keep the AGPL notice
+   and source-offer. See `docs/TRUST_HARDENING_PLAN.md` Phases 7, W and L.
+
+### Rules for agents working in this fork
+
+* **No new outbound endpoints.** Any new URL, hostname or IP literal in code needs an explicit
+  justification in the PR. Never add telemetry, crash reporting, analytics or auto-update.
+* **No new binary artifacts.** Do not commit or download prebuilt binaries, drivers or
+  archives. Anything fetched at build time must be pinned by hash and listed in the audit table above.
+* **Dependencies:** pin by `rev`/exact version; prefer removing a dependency to adding one.
+  New git dependencies require the user's approval.
+* **Fail closed.** Missing server/key configuration is an error shown to the user, never a
+  silent fallback to a vendor default.
+* **Never trust the server with local config.** Remote peers and servers must not be able to
+  change client settings, install software or run commands without a local approval prompt.
+* **Keep the AGPL intact.** Do not strip licence headers or copyright notices; add a clear
+  fork notice in the README.
+* **Update this section.** When a finding is fixed, mark it fixed here with the commit hash;
+  when a new concern is found, add a row. Keep claims verifiable: cite file and line, and say
+  "not verified" when you could not check.
+* Hardening commits go in separate commits from feature work, and the PR description lists
+  the egress/regression surface touched (see the upstream "regression-surface" rule below).
+
 ## Project Layout
 
 ### Directory Structure
