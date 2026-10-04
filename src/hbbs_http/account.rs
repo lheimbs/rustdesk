@@ -366,6 +366,9 @@ impl OidcSession {
         uuid: String,
         remember_me: bool,
     ) {
+        if !crate::HTTP_REQUESTS_ENABLED {
+            return;
+        }
         let auth_attempt = OIDC_SESSION.write().unwrap().start_auth_attempt();
         Self::wait_stop_querying();
         {

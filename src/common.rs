@@ -1116,43 +1116,8 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
 }
 
 #[inline]
-pub fn get_api_server(api: String, custom: String) -> String {
-    if Config::no_register_device() {
-        return "".to_owned();
-    }
-    let mut res = get_api_server_(api, custom);
-    if res.ends_with('/') {
-        res.pop();
-    }
-    if res.starts_with("https")
-        && res.ends_with(":21114")
-        && get_builtin_option(keys::OPTION_ALLOW_HTTPS_21114) != "Y"
-    {
-        return res.replace(":21114", "");
-    }
-    res
-}
-
-fn get_api_server_(api: String, custom: String) -> String {
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
-        if !lic.api.is_empty() {
-            return lic.api.clone();
-        }
-    }
-    if !api.is_empty() {
-        return api.to_owned();
-    }
-    let s0 = get_custom_rendezvous_server(custom);
-    if !s0.is_empty() {
-        let s = crate::increase_port(&s0, -2);
-        if s == s0 {
-            return format!("http://{}:{}", s, config::RENDEZVOUS_PORT - 2);
-        } else {
-            return format!("http://{}", s);
-        }
-    }
-    "https://admin.rustdesk.com".to_owned()
+pub fn get_api_server(_api: String, _custom: String) -> String {
+    String::new()
 }
 
 #[inline]
@@ -1523,7 +1488,13 @@ where
 ///   falls back to TCP proxy if WS is off.
 /// - 4xx responses are returned as-is (server is reachable, business logic error).
 /// - If fallback also fails, returns the original HTTP result (text or error).
+/// Outbound HTTP(S) is disabled in this build: only rendezvous, relay and peer traffic remain.
+pub const HTTP_REQUESTS_ENABLED: bool = false;
+
 pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
+    if !HTTP_REQUESTS_ENABLED {
+        bail!("network requests are disabled");
+    }
     with_tcp_proxy_fallback(
         &url,
         "POST",
@@ -1558,6 +1529,9 @@ pub async fn post_request_with_status(
     body: String,
     header: &str,
 ) -> ResultType<(u16, String)> {
+    if !HTTP_REQUESTS_ENABLED {
+        bail!("network requests are disabled");
+    }
     if should_use_raw_tcp_for_api(&url) {
         return post_request_via_tcp_proxy_status(&url, &body, header).await;
     }
@@ -1849,6 +1823,9 @@ pub async fn http_request_sync(
     body: Option<String>,
     header: String,
 ) -> ResultType<String> {
+    if !HTTP_REQUESTS_ENABLED {
+        bail!("network requests are disabled");
+    }
     with_tcp_proxy_fallback(
         &url,
         &method,
