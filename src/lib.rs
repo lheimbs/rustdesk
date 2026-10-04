@@ -28,7 +28,7 @@ pub mod ipc;
     target_os = "ios",
     feature = "flutter"
 )))]
-pub mod ui;
+compile_error!("the Sciter UI was removed; build with --features flutter");
 mod version;
 pub use version::*;
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
