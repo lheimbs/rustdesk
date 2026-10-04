@@ -422,7 +422,7 @@ impl Default for PeerConfig {
             port_forwards: Default::default(),
             direct_failures: Default::default(),
             disable_audio: Default::default(),
-            disable_clipboard: Default::default(),
+            disable_clipboard: DisableClipboard { v: true },
             enable_file_copy_paste: Default::default(),
             show_quality_monitor: Default::default(),
             follow_remote_cursor: Default::default(),
@@ -2796,11 +2796,12 @@ pub fn is_incoming_only() -> bool {
 
 #[inline]
 pub fn is_outgoing_only() -> bool {
-    HARD_SETTINGS
-        .read()
-        .unwrap()
-        .get("conn-type")
-        .map_or(false, |x| x == ("outgoing"))
+    cfg!(target_os = "linux")
+        || HARD_SETTINGS
+            .read()
+            .unwrap()
+            .get("conn-type")
+            .map_or(false, |x| x == ("outgoing"))
 }
 
 #[inline]

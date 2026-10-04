@@ -617,6 +617,12 @@ class FileController {
       return;
     }
 
+    // Entry names come from the remote listing: refuse names that could escape the target folder.
+    if (items.items.any((e) => !isSafeEntryName(e.name))) {
+      showToast(translate('Unsafe file name'));
+      return;
+    }
+
     // alias
     final isRemoteToLocal = !isLocal;
 
@@ -2152,4 +2158,9 @@ class FileDialogEventLoop
   void setSkip(bool skip) {
     _skip = skip;
   }
+}
+
+bool isSafeEntryName(String name) {
+  if (name.isEmpty || name == '.' || name == '..') return false;
+  return !name.contains('/') && !name.contains('\\') && !name.contains('\u0000');
 }
