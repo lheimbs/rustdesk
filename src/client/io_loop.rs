@@ -206,6 +206,19 @@ impl<T: InvokeUiSession> Remote<T> {
                     .lock()
                     .unwrap()
                     .set_connected();
+                if let Some(pk) = pk.as_ref() {
+                    if !self.handler.lc.write().unwrap().check_pinned_pk(pk) {
+                        self.handler.msgbox(
+                            "error",
+                            "Connection Error",
+                            "The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.",
+                            "",
+                        );
+                        self.send_close_reason(&mut peer, "").await;
+                        self.handle_disconnected(round);
+                        return;
+                    }
+                }
                 let is_secured = peer.is_secured();
                 // Only WebRTC needs refining: its label names the transport that won the race,
                 // not the family ICE ended up nominating, and it is the one path where the two

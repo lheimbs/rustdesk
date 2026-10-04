@@ -114,8 +114,14 @@ const CHARS: &[char] = &[
     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];
-pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
+pub const RENDEZVOUS_SERVERS: &[&str] = &[match option_env!("HANDOVER_RENDEZVOUS_SERVER") {
+    Some(s) => s,
+    None => "",
+}];
+pub const RS_PUB_KEY: &str = match option_env!("HANDOVER_SERVER_KEY") {
+    Some(s) => s,
+    None => "",
+};
 
 pub const RENDEZVOUS_PORT: i32 = 21116;
 pub const RELAY_PORT: i32 = 21117;
@@ -388,6 +394,12 @@ pub struct PeerConfig {
     pub info: PeerInfoSerde,
     #[serde(default)]
     pub transfer: TransferSerde,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_string",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub pinned_pk: String,
 }
 
 impl Default for PeerConfig {
@@ -428,6 +440,7 @@ impl Default for PeerConfig {
             ui_flutter: Default::default(),
             info: Default::default(),
             transfer: Default::default(),
+            pinned_pk: Default::default(),
             sync_init_clipboard: Default::default(),
         }
     }
@@ -954,7 +967,11 @@ impl Config {
                 return ss;
             }
         }
-        return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
+        return RENDEZVOUS_SERVERS
+            .iter()
+            .filter(|x| !x.is_empty())
+            .map(|x| x.to_string())
+            .collect();
     }
 
     pub fn reset_online() {

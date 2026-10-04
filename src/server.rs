@@ -261,7 +261,8 @@ pub async fn create_tcp_connection(
 /// Separate so it can be raced against the connection's eviction.
 async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()> {
     let (sk, pk) = Config::get_key_pair();
-    if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
+    let _ = secure;
+    if pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
         let mut sk_ = [0u8; sign::SECRETKEYBYTES];
         sk_[..].copy_from_slice(&sk);
         let sk = sign::SecretKey(sk_);
@@ -331,12 +332,12 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
                             )?;
                         } else if pk.asymmetric_value.is_empty() {
                             Config::set_key_confirmed(false);
-                            log::info!("Force to update pk");
+                            bail!("Handshake failed: controller refused the identity key (refusing non-secure session)");
                         } else {
                             bail!("Handshake failed: invalid public sign key length from peer");
                         }
                     } else {
-                        log::error!("Handshake failed: invalid message type");
+                        bail!("Handshake failed: invalid message type");
                     }
                 } else {
                     bail!("Handshake failed: invalid message format");
@@ -346,6 +347,8 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
                 bail!("Failed to receive public key");
             }
         }
+    } else {
+        bail!("Handshake failed: no usable identity key pair");
     }
 
     Ok(())

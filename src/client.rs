@@ -47,7 +47,7 @@ use hbb_common::{
     bail,
     config::{
         self, use_ws, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution,
-        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT, RENDEZVOUS_PORT, RENDEZVOUS_SERVERS,
+        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT, RENDEZVOUS_PORT,
     },
     futures::future::{select_ok, BoxFuture, FutureExt},
     get_version_number, log,
@@ -463,18 +463,7 @@ impl Client {
         let (rendezvous_server, servers, contained) = if other_server.is_empty() {
             crate::get_rendezvous_server(1_000).await
         } else {
-            if other_server == PUBLIC_SERVER {
-                (
-                    check_port(RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT),
-                    RENDEZVOUS_SERVERS[1..]
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect(),
-                    true,
-                )
-            } else {
-                (check_port(other_server, RENDEZVOUS_PORT), Vec::new(), true)
-            }
+            bail!("connecting through another rendezvous server is not supported");
         };
 
         // Same relay gate as the v6 socket below: under any forced relay the v6 punch cannot
@@ -1678,13 +1667,7 @@ impl Client {
         let sign_pk = match sign_pk {
             Some(v) => v,
             None => {
-                // No trusted peer identity (key-less deployment, or a blob that does not verify
-                // under our root), so no fingerprint binding is possible. Fall through like TCP's
-                // non-secure path with is_secured() false: bailing would only move the session to
-                // a relay that fails the same check and then runs in plaintext.
-                // send an empty message out in case server is setting up secure and waiting for first message
-                conn.send(&Message::new()).await?;
-                return Ok(option_pk);
+                bail!("peer identity could not be verified (missing or invalid server key signature)");
             }
         };
         match timeout(READ_TIMEOUT, conn.next()).await? {
@@ -1736,35 +1719,16 @@ impl Client {
                                     },
                                 )?;
                             } else {
-                                if is_webrtc {
-                                    bail!("WebRTC handshake id mismatch (possible MITM)");
-                                }
-                                log::error!("Handshake failed: sign failure");
-                                conn.send(&Message::new()).await?;
+                                bail!("handshake id mismatch (possible MITM)");
                             }
                         } else {
-                            if is_webrtc {
-                                bail!("WebRTC peer identity could not be verified (refusing unbound channel)");
-                            }
-                            // fall back to non-secure connection in case pk mismatch
-                            log::info!("pk mismatch, fall back to non-secure");
-                            let mut msg_out = Message::new();
-                            msg_out.set_public_key(PublicKey::new());
-                            conn.send(&msg_out).await?;
+                            bail!("peer identity could not be verified (refusing non-secure fallback)");
                         }
                     } else {
-                        if is_webrtc {
-                            bail!("WebRTC handshake received an unexpected message type");
-                        }
-                        log::error!("Handshake failed: invalid message type");
-                        conn.send(&Message::new()).await?;
+                        bail!("handshake received an unexpected message type");
                     }
                 } else {
-                    if is_webrtc {
-                        bail!("WebRTC handshake received a malformed message");
-                    }
-                    log::error!("Handshake failed: invalid message format");
-                    conn.send(&Message::new()).await?;
+                    bail!("handshake received a malformed message");
                 }
             }
             None => {
@@ -2939,31 +2903,12 @@ impl LoginConfigHandler {
         if id.contains("@") {
             let mut v = id.split("@");
             let raw_id: &str = v.next().unwrap_or_default();
-            let mut server_key = v.next().unwrap_or_default().split('?');
-            let server = server_key.next().unwrap_or_default();
-            let args = server_key.next().unwrap_or_default();
-            let key = if server == PUBLIC_SERVER {
-                config::RS_PUB_KEY.to_owned()
-            } else {
-                let mut args_map: HashMap<String, &str> = HashMap::new();
-                for arg in args.split('&') {
-                    if let Some(kv) = arg.find('=') {
-                        let k = arg[0..kv].to_lowercase();
-                        let v = &arg[kv + 1..];
-                        args_map.insert(k, v);
-                    }
-                }
-                let key = args_map.remove("key").unwrap_or_default();
-                key.to_owned()
-            };
-
-            // here we can check <id>/r@server
+            // `id@server` overrides are ignored: only the configured server is ever used.
             let real_id = crate::ui_interface::handle_relay_id(raw_id).to_string();
             if real_id != raw_id {
                 force_relay = true;
             }
-            self.other_server = Some((real_id.clone(), server.to_owned(), key));
-            id = format!("{real_id}@{server}");
+            id = real_id;
         } else {
             let real_id = crate::ui_interface::handle_relay_id(&id);
             if real_id != id {
@@ -3076,6 +3021,17 @@ impl LoginConfigHandler {
     pub fn save_config(&mut self, config: PeerConfig) {
         config.store(&self.id);
         self.config = config;
+    }
+
+    pub fn check_pinned_pk(&mut self, pk: &[u8]) -> bool {
+        let encoded = crate::encode64(pk);
+        if self.config.pinned_pk.is_empty() {
+            let mut config = self.load_config();
+            config.pinned_pk = encoded;
+            self.save_config(config);
+            return true;
+        }
+        self.config.pinned_pk == encoded
     }
 
     /// Set an option for handler's [`PeerConfig`].
@@ -5956,6 +5912,33 @@ mod kx_tests {
         let (seen, decrypted) = handshake(0, Some(0)).await;
         assert_eq!(seen.picked, 0);
         assert!(seen.decrypted && decrypted);
+    }
+
+    #[tokio::test]
+    async fn test_a_peer_that_cannot_be_verified_is_refused() {
+        let (_rs_pk, rs_sk) = sign::gen_keypair();
+        let (other_pk, _) = sign::gen_keypair();
+        let (host, signed_id_pk, _seen) = controlled_stub(KX_VERSION_LATEST, None, rs_sk).await;
+        let mut conn = connect_tcp(host, 3000).await.unwrap();
+        let res = Client::secure_connection(
+            PEER_ID,
+            signed_id_pk,
+            &crate::encode64(other_pk.0),
+            &mut conn,
+        )
+        .await;
+        assert!(res.is_err() && !conn.is_secured());
+    }
+
+    #[tokio::test]
+    async fn test_a_peer_without_a_signed_identity_is_refused() {
+        let (rs_pk, rs_sk) = sign::gen_keypair();
+        let (host, _signed_id_pk, _seen) = controlled_stub(KX_VERSION_LATEST, None, rs_sk).await;
+        let mut conn = connect_tcp(host, 3000).await.unwrap();
+        let res =
+            Client::secure_connection(PEER_ID, Vec::new(), &crate::encode64(rs_pk.0), &mut conn)
+                .await;
+        assert!(res.is_err() && !conn.is_secured());
     }
 
     #[tokio::test]

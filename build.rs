@@ -85,7 +85,29 @@ fn install_android_deps() {
     println!("cargo:rustc-link-lib=OpenSLES");
 }
 
+fn check_baked_server() {
+    println!("cargo:rerun-if-env-changed=HANDOVER_RENDEZVOUS_SERVER");
+    println!("cargo:rerun-if-env-changed=HANDOVER_SERVER_KEY");
+    if std::env::var("PROFILE").as_deref() != Ok("release") {
+        return;
+    }
+    let server = std::env::var("HANDOVER_RENDEZVOUS_SERVER").unwrap_or_default();
+    let key = std::env::var("HANDOVER_SERVER_KEY").unwrap_or_default();
+    let key_ok = key.len() == 44
+        && key.ends_with('=')
+        && key[..43]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/');
+    if server.is_empty() || !key_ok {
+        panic!(
+            "release builds need HANDOVER_RENDEZVOUS_SERVER (host) and HANDOVER_SERVER_KEY \
+             (base64 id_ed25519.pub of your hbbs)"
+        );
+    }
+}
+
 fn main() {
+    check_baked_server();
     hbb_common::gen_version();
     install_android_deps();
     #[cfg(all(windows, feature = "inline"))]
