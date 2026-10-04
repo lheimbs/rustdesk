@@ -157,16 +157,8 @@ const FRAG_END: u8 = 0;
 /// unauthenticated peer can make a receiver hold. Kept at parity with TCP on purpose: one session
 /// moves between both paths, so a transport-specific ceiling would kill it on the other one.
 const MAX_RECV_MESSAGE: usize = crate::bytes_codec::MAX_FRAME_LENGTH;
-// Four networks, not four names: webrtc-ice queries each URL from its own socket, so entries
-// sharing a host buy no redundancy - the two this list used to carry failed together, in the same
-// millisecond, on a peer whose route to that one host was down. Two anycast, two unicast; the 443
-// entry is for networks that pass no other UDP port.
-static DEFAULT_ICE_SERVERS: [&str; 4] = [
-    "stun:stun.cloudflare.com:3478",
-    "stun:stun.l.google.com:19302",
-    "stun:stun.antisip.com:3478",
-    "stun:stun.nextcloud.com:443",
-];
+// No default STUN servers: only ice-servers configured by the user are ever contacted.
+static DEFAULT_ICE_SERVERS: [&str; 0] = [];
 
 lazy_static::lazy_static! {
     static ref SESSIONS: Arc::<Mutex<HashMap<String, WebRTCStream>>> = Default::default();
@@ -542,7 +534,7 @@ impl WebRTCStream {
         }
 
         // If there is no STUN (either TURN-only or empty config) → prepend defaults
-        if !has_stun {
+        if !has_stun && !DEFAULT_ICE_SERVERS.is_empty() {
             ice_servers.insert(
                 0,
                 RTCIceServer {
@@ -1541,7 +1533,7 @@ pub fn is_webrtc_endpoint(endpoint: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::webrtc::WebRTCStream;
-    use crate::webrtc::{NewStreamHandoff, DEFAULT_ICE_SERVERS, FRAG_MORE, SESSIONS, WEBRTC_RT};
+    use crate::webrtc::{NewStreamHandoff, FRAG_MORE, SESSIONS, WEBRTC_RT};
     use bytes::{BufMut, Bytes, BytesMut};
     use std::{collections::HashMap, sync::Arc, time::Duration};
     use tokio::sync::Barrier;
@@ -1649,10 +1641,7 @@ mod tests {
     // one process, so mutating it raced every peer connection the loopback tests were building.
     #[test]
     fn test_webrtc_ice_server_list() {
-        assert_eq!(
-            WebRTCStream::parse_ice_servers("")[0].urls[0],
-            DEFAULT_ICE_SERVERS[0].to_string()
-        );
+        assert!(WebRTCStream::parse_ice_servers("").is_empty());
 
         // Unusable entries drop out of the list; the rest of the config still applies.
         let parsed = WebRTCStream::parse_ice_servers(
@@ -1662,10 +1651,10 @@ mod tests {
         assert_eq!(parsed[1].urls[0], "turn:example.com:3478");
         assert_eq!(parsed.len(), 2);
 
-        // TURN-only config still gets the default STUN servers prepended.
+        // A TURN-only config gets no default STUN servers prepended.
         let turn_only = WebRTCStream::parse_ice_servers("turn://u:p@example.com:3478");
-        assert_eq!(turn_only[0].urls[0], DEFAULT_ICE_SERVERS[0].to_string());
-        assert_eq!(turn_only[1].urls[0], "turn:example.com:3478");
+        assert_eq!(turn_only.len(), 1);
+        assert_eq!(turn_only[0].urls[0], "turn:example.com:3478");
     }
 
     #[test]
