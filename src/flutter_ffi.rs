@@ -2529,7 +2529,7 @@ pub fn is_disable_account() -> SyncReturn<bool> {
 }
 
 pub fn is_disable_group_panel() -> SyncReturn<bool> {
-    SyncReturn(LocalConfig::get_option("disable-group-panel") == "Y")
+    SyncReturn(true)
 }
 
 // windows only
