@@ -2842,6 +2842,9 @@ pub fn is_disable_installation() -> bool {
 // flutter: flutter/lib/common.dart -> option2bool()
 // sciter: Does not have the function, but it should be kept the same.
 pub fn option2bool(option: &str, value: &str) -> bool {
+    if option == keys::OPTION_DIRECT_SERVER {
+        return false;
+    }
     if option.starts_with("enable-") {
         value != "N"
     } else if option.starts_with("allow-")

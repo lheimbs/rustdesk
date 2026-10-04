@@ -296,6 +296,8 @@ impl RendezvousMediator {
         let start_lan_listening = true;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let start_lan_listening = crate::platform::is_installed();
+        // LAN discovery answers any host on the network with hostname, username and MAC address.
+        let start_lan_listening = false && start_lan_listening;
         if start_lan_listening {
             std::thread::spawn(move || {
                 allow_err!(super::lan::start_listening());

@@ -2625,8 +2625,26 @@ impl Connection {
         false
     }
 
+    /// Features that are never available, whatever the options or the rendezvous server say.
+    fn is_always_disabled(enable_prefix_option: &str) -> bool {
+        matches!(
+            enable_prefix_option,
+            keys::OPTION_ENABLE_TERMINAL
+                | keys::OPTION_ENABLE_TUNNEL
+                | keys::OPTION_ENABLE_CAMERA
+                | keys::OPTION_ENABLE_REMOTE_RESTART
+                | keys::OPTION_ENABLE_RECORD_SESSION
+                | keys::OPTION_ENABLE_REMOTE_PRINTER
+                | keys::OPTION_ENABLE_PRIVACY_MODE
+                | keys::OPTION_ENABLE_BLOCK_INPUT
+        )
+    }
+
     #[inline]
     pub fn is_permission_enabled_locally(enable_prefix_option: &str) -> bool {
+        if Self::is_always_disabled(enable_prefix_option) {
+            return false;
+        }
         #[cfg(feature = "flutter")]
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
@@ -2648,6 +2666,9 @@ impl Connection {
         control_permissions: &Option<ControlPermissions>,
     ) -> bool {
         use hbb_common::rendezvous_proto::control_permissions::Permission;
+        if Self::is_always_disabled(enable_prefix_option) {
+            return false;
+        }
         if let Some(control_permissions) = control_permissions {
             let permission = match enable_prefix_option {
                 keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
