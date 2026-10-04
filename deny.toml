@@ -1,0 +1,52 @@
+# Supply-chain policy for Handover (checked with `cargo deny check`).
+# Every git source below is pinned to a full commit in a Cargo.toml (see docs/TRUST_HARDENING_PLAN.md,
+# Phase 8): the fork repos under rustdesk-org are vendor-controlled forks of upstream crates, the others
+# are the upstream projects themselves.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+# Reachability triage of the advisories is tracked in docs/TRUST_HARDENING_PLAN.md (U7).
+yanked = "warn"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/bjornsnoen/x11-rs",
+    "https://github.com/rustdesk-org/The-Fat-Controller",
+    "https://github.com/rustdesk-org/arboard",
+    "https://github.com/rustdesk-org/clipboard-master",
+    "https://github.com/rustdesk-org/confy",
+    "https://github.com/rustdesk-org/cpal",
+    "https://github.com/rustdesk-org/default_net",
+    "https://github.com/rustdesk-org/evdev",
+    "https://github.com/rustdesk-org/impersonate-system",
+    "https://github.com/rustdesk-org/kcp-sys",
+    "https://github.com/rustdesk-org/keepawake-rs",
+    "https://github.com/rustdesk-org/machine-uid",
+    "https://github.com/rustdesk-org/magnum-opus",
+    "https://github.com/rustdesk-org/nokhwa.git",
+    "https://github.com/rustdesk-org/parity-tokio-ipc",
+    "https://github.com/rustdesk-org/pulsectl",
+    "https://github.com/rustdesk-org/rdev",
+    "https://github.com/rustdesk-org/rust-webm",
+    "https://github.com/rustdesk-org/sysinfo",
+    "https://github.com/rustdesk-org/tao",
+    "https://github.com/rustdesk-org/tokio-socks",
+    "https://github.com/rustdesk-org/tokio-tungstenite",
+    "https://github.com/rustdesk-org/tungstenite-rs",
+    "https://github.com/rustdesk-org/wallpaper.rs",
+    "https://github.com/rustdesk-org/webrtc",
+    "https://github.com/rustdesk-org/wezterm",
+    "https://github.com/tauri-apps/tray-icon",
+]
