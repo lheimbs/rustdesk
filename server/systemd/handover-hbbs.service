@@ -1,0 +1,46 @@
+[Unit]
+Description=Handover rendezvous server (hbbs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Create the user once: useradd --system --home /var/lib/handover-server --shell /usr/sbin/nologin handover
+User=handover
+Group=handover
+WorkingDirectory=/var/lib/handover-server
+Environment=RUST_LOG=info
+# -k _ : generate/use id_ed25519 in the working directory and refuse clients that do not carry its public key.
+# -r   : host:port of hbbr as clients should reach it (your overlay-network/LAN address).
+ExecStart=/usr/local/bin/hbbs -k _ -r RELAY_HOST:21117
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/handover-server
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+# Only your own networks may talk to the server (adjust to your overlay-network range and LAN); everything else is dropped.
+IPAddressDeny=any
+IPAddressAllow=100.64.0.0/10 fd00::/8 192.168.0.0/16 127.0.0.0/8 ::1/128
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,45 @@
+[Unit]
+Description=Handover relay server (hbbr)
+After=network-online.target handover-hbbs.service
+Wants=network-online.target
+
+[Service]
+# Create the user once: useradd --system --home /var/lib/handover-server --shell /usr/sbin/nologin handover
+User=handover
+Group=handover
+WorkingDirectory=/var/lib/handover-server
+Environment=RUST_LOG=info
+# -k _ : read the key hbbs generated in the same working directory; refuse relay requests without it.
+ExecStart=/usr/local/bin/hbbr -k _
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/handover-server
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+# Only your own networks may talk to the server (adjust to your overlay-network range and LAN); everything else is dropped.
+IPAddressDeny=any
+IPAddressAllow=100.64.0.0/10 fd00::/8 192.168.0.0/16 127.0.0.0/8 ::1/128
+
+[Install]
+WantedBy=multi-user.target
