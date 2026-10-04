@@ -59,8 +59,8 @@ sha2 = "0.10"
 repng = "0.2"
 zstd = "0.13"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
-parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
-magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus" }
+parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc", rev = "d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01" }
+magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus", rev = "588c6e1f9ed50c3a01fa64f3bd3e7cdb0378a114" }
 dasp = { version = "0.11", features = ["signal", "interpolate-linear", "interpolate"], optional = true }
 rubato = { version = "0.12", optional = true }
 samplerate = { version = "0.2", optional = true }
@@ -72,7 +72,7 @@ default-net = "0.14"
 wol-rs = "1.0"
 flutter_rust_bridge = { version = "=1.80", features = ["uuid"], optional = true}
 errno = "0.3"
-rdev = { git = "https://github.com/rustdesk-org/rdev" }
+rdev = { git = "https://github.com/rustdesk-org/rdev", rev = "a361d86a8b0245f3618a9efb375c149530a6b599" }
 url = { version = "2.3", features = ["serde"] }
 crossbeam-queue = "0.3"
 hex = "0.4"
@@ -82,12 +82,12 @@ fon = "0.6"
 shutdown_hooks = "0.1"
 totp-rs = { version = "5.4", default-features = false, features = ["gen_secret", "otpauth"] }
 stunclient = "0.4"
-kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys", branch = "rustdesk-patches" }
+kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys", rev = "938eda3e5e9757a612385503af7a6cb1189b2cdd" }
 reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip", "zstd"], default-features=false }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 # https://github.com/rustdesk/rustdesk/discussions/10197, not use cpal on linux
-cpal = { git = "https://github.com/rustdesk-org/cpal", branch = "osx-screencapturekit" }
+cpal = { git = "https://github.com/rustdesk-org/cpal", rev = "96d4da121b7d949677ac5b6887413a9185fd7f39" }
 ringbuf = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -97,9 +97,9 @@ enigo = { path = "libs/enigo", features = [ "with_serde" ] }
 clipboard = { path = "libs/clipboard" }
 ctrlc = "3.2"
 # arboard = { version = "3.4", features = ["wayland-data-control"] }
-arboard = { git = "https://github.com/rustdesk-org/arboard", features = ["wayland-data-control"] }
-clipboard-master = { git = "https://github.com/rustdesk-org/clipboard-master" }
-portable-pty = { git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1", package = "portable-pty" }
+arboard = { git = "https://github.com/rustdesk-org/arboard", rev = "c7d5781f563176df9efd8df6287e823fb1b9bed5", features = ["wayland-data-control"] }
+clipboard-master = { git = "https://github.com/rustdesk-org/clipboard-master", rev = "522fafb65edfe7939cf63fa797f916569ecab595" }
+portable-pty = { git = "https://github.com/rustdesk-org/wezterm", rev = "80174f8009f41565f0fa8c66dab90d4f9211ae16", package = "portable-pty" }
 
 system_shutdown = "4.0"
 qrcode-generator = "4.1"
@@ -144,7 +144,7 @@ winreg = "0.11"
 windows-service = "0.6"
 virtual_display = { path = "libs/virtual_display" }
 remote_printer = { path = "libs/remote_printer" }
-impersonate_system = { git = "https://github.com/rustdesk-org/impersonate-system" }
+impersonate_system = { git = "https://github.com/rustdesk-org/impersonate-system", rev = "2f429010a5a10b1fe5eceb553c6672fd53d20167" }
 shared_memory = "0.12"
 tauri-winrt-notification = "0.1"
 
@@ -163,15 +163,15 @@ piet-coregraphics = "0.6"
 foreign-types = "0.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
-tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
-tao = { git = "https://github.com/rustdesk-org/tao", branch = "dev" }
+tray-icon = { git = "https://github.com/tauri-apps/tray-icon", rev = "0a5835b0e6828e37a1f781de9c2d671ae7a939e6", version = "0.21.3" }
+tao = { git = "https://github.com/rustdesk-org/tao", rev = "288c219cb0527e509590c2b2d8e7072aa9feb2d3" }
 image = "0.24"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
-keepawake = { git = "https://github.com/rustdesk-org/keepawake-rs" }
+keepawake = { git = "https://github.com/rustdesk-org/keepawake-rs", rev = "64d568586dd16551d02120e19668d2b0fec8e3c9" }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
-wallpaper = { git = "https://github.com/rustdesk-org/wallpaper.rs" }
+wallpaper = { git = "https://github.com/rustdesk-org/wallpaper.rs", rev = "ce4a0cd3f58327c7cc44d15a63706fb0c022bacf" }
 tiny-skia = "0.11"
 softbuffer = "0.4"
 fontdb = "0.23"
@@ -182,12 +182,12 @@ ttf-parser = "0.25"
 libxdo-sys = "0.11"
 psimple = { package = "libpulse-simple-binding", version = "2.27" }
 pulse = { package = "libpulse-binding", version = "2.27" }
-rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl" }
+rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl", rev = "aa34dde499aa912a3abc5289cc0b547bd07dd6e2" }
 async-process = "1.7"
-evdev = { git="https://github.com/rustdesk-org/evdev" }
+evdev = { git="https://github.com/rustdesk-org/evdev", rev = "cec616e37790293d2cd2aa54a96601ed6b1b35a9" }
 dbus = "0.9"
 dbus-crossroads = "0.5"
-x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
+x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", rev = "5fc2e73bc01ada3681159b34cf3ea8f0d14cd904", optional = true}
 x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
 percent-encoding = {version = "2.3", optional = true}
 once_cell = {version = "1.18", optional = true}
@@ -203,7 +203,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"
 jni = "0.21"
-android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
+android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock", rev = "d0292e5a367e627c4fa6f1ca6bdfad005dca7d90" }
 
 [workspace]
 members = ["libs/scrap", "libs/hbb_common", "libs/base", "libs/enigo", "libs/clipboard", "libs/virtual_display", "libs/virtual_display/dylib", "libs/portable", "libs/remote_printer"]

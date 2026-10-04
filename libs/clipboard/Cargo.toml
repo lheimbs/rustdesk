@@ -42,12 +42,12 @@ once_cell = {version = "1.18", optional = true}
 
 [target.'cfg(target_os = "linux")'.dependencies]
 percent-encoding = {version  ="2.3", optional = true}
-x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
+x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", rev = "5fc2e73bc01ada3681159b34cf3ea8f0d14cd904", optional = true}
 x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
-fuser = {git="https://github.com/rustdesk-org/fuser", branch = "refact/tag-0.16.0-cargo-1.75.0", default-features = false, optional = true}
+fuser = {git="https://github.com/rustdesk-org/fuser", rev = "a3c0babe4a533f8dbcff5bce59ae7f2424b8d877", default-features = false, optional = true}
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cacao = {git="https://github.com/clslaid/cacao", branch = "feat/set-file-urls", optional = true}
+cacao = {git="https://github.com/clslaid/cacao", rev = "05e1536b0b43aaae308ec72c0eed703e875b7b95", optional = true}
 # Use `relax-void-encoding`, as that allows us to pass `c_void` instead of implementing `Encode` correctly for `&CGImageRef`
 objc2 = { version = "0.5.1", features = ["relax-void-encoding"] }
 objc2-foundation = { version = "0.2.0", features = ["NSArray", "NSString", "NSEnumerator", "NSGeometry", "NSProgress"] }

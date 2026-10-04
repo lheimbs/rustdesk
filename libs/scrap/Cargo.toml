@@ -32,7 +32,7 @@ num_cpus = "1.15"
 lazy_static = "1.4"
 hbb_common = { path = "../hbb_common" }
 base = { path = "../base" }
-webm = { git = "https://github.com/rustdesk-org/rust-webm" }
+webm = { git = "https://github.com/rustdesk-org/rust-webm", rev = "d2c4d3ac133c7b0e4c0f656da710b48391981e64" }
 serde = {version="1.0", features=["derive"]}
 
 [dependencies.winapi]
@@ -72,8 +72,9 @@ zbus = { version = "3.15", optional = true }
 
 [dependencies.hwcodec]
 git = "https://github.com/rustdesk-org/hwcodec"
+rev = "778df1f99597722473b29443bac22ae6c23946fe"
 optional = true
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
-nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts", features = ["input-native"] }
+nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", rev = "c2f74662b6ce117f7f94301693fdfadc0b1ec91a", features = ["input-native"] }
 
