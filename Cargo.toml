@@ -13,10 +13,6 @@ name = "librustdesk"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [[bin]]
-name = "naming"
-path = "src/naming.rs"
-
-[[bin]]
 name = "service"
 path = "src/service.rs"
 

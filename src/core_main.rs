@@ -228,31 +228,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
                 return None;
             } else if args[0] == "--update" {
-                if config::is_disable_installation() {
-                    return None;
-                }
-
-                let text = match crate::platform::prepare_custom_client_update() {
-                    Err(e) => {
-                        log::error!("Error preparing custom client update: {}", e);
-                        "Update failed!".to_string()
-                    }
-                    Ok(false) => "Update failed!".to_string(),
-                    Ok(true) => match platform::update_me(false) {
-                        Ok(_) => "Updated successfully!".to_string(),
-                        Err(err) => {
-                            log::error!("Failed with error: {err}");
-                            "Update failed!".to_string()
-                        }
-                    },
-                };
-                Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title(&config::APP_NAME.read().unwrap())
-                    .text1(&translate(text))
-                    .sound(Some(Sound::Default))
-                    .duration(Duration::Short)
-                    .show()
-                    .ok();
                 return None;
             } else if args[0] == "--after-install" {
                 if let Err(err) = platform::run_after_install() {
@@ -286,52 +261,15 @@ pub fn core_main() -> Option<Vec<String>> {
                     .show()
                     .ok();
                 return None;
-            } else if args[0] == "--uninstall-cert" {
-                #[cfg(windows)]
-                hbb_common::allow_err!(crate::platform::windows::uninstall_cert());
-                return None;
-            } else if args[0] == "--install-idd" {
-                #[cfg(windows)]
-                if crate::virtual_display_manager::is_virtual_display_supported() {
-                    hbb_common::allow_err!(
-                        crate::virtual_display_manager::rustdesk_idd::install_update_driver()
-                    );
-                }
-                return None;
-            } else if args[0] == "--portable-service" {
-                crate::platform::elevate_or_run_as_system(
-                    click_setup,
-                    _is_elevate,
-                    _is_run_as_system,
-                );
-                return None;
-            } else if args[0] == "--uninstall-amyuni-idd" {
-                #[cfg(windows)]
-                hbb_common::allow_err!(
-                    crate::virtual_display_manager::amyuni_idd::uninstall_driver()
-                );
-                return None;
-            } else if args[0] == "--install-remote-printer" {
-                #[cfg(windows)]
-                if crate::platform::is_win_10_or_greater() {
-                    match remote_printer::install_update_printer(&crate::get_app_name()) {
-                        Ok(_) => {
-                            log::info!("Remote printer installed/updated successfully");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to install/update the remote printer: {}", e);
-                        }
-                    }
-                } else {
-                    log::error!("Win10 or greater required!");
-                }
-                return None;
-            } else if args[0] == "--uninstall-remote-printer" {
-                #[cfg(windows)]
-                if crate::platform::is_win_10_or_greater() {
-                    remote_printer::uninstall_printer(&crate::get_app_name());
-                    log::info!("Remote printer uninstalled");
-                }
+            } else if matches!(
+                args[0].as_str(),
+                "--uninstall-cert"
+                    | "--install-idd"
+                    | "--uninstall-amyuni-idd"
+                    | "--portable-service"
+                    | "--install-remote-printer"
+                    | "--uninstall-remote-printer"
+            ) {
                 return None;
             }
         }

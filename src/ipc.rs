@@ -318,6 +318,39 @@ pub enum SwitchSidesUuidAction {
     Consume,
 }
 
+/// Options another process may not change over IPC: where this machine connects, how it
+/// authenticates and what may be enabled. They come from the build or from root-only commands.
+const PROTECTED_OPTIONS: &[&str] = &[
+    "custom-rendezvous-server",
+    "relay-server",
+    "api-server",
+    "key",
+    "rendezvous-servers",
+    "ice-servers",
+    "approve-mode",
+    "verification-method",
+    "access-mode",
+    "whitelist",
+    "direct-server",
+    "stop-service",
+    "allow-remote-config-modification",
+];
+
+fn keep_protected_options(mut incoming: HashMap<String, String>) -> HashMap<String, String> {
+    let current = Config::get_options();
+    for key in PROTECTED_OPTIONS {
+        match current.get(*key) {
+            Some(v) => {
+                incoming.insert(key.to_string(), v.clone());
+            }
+            None => {
+                incoming.remove(*key);
+            }
+        }
+    }
+    incoming
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum Data {
@@ -1037,7 +1070,7 @@ async fn handle(data: Data, stream: &mut Connection) {
                 if let Some(v) = value.get("privacy-mode-impl-key") {
                     crate::privacy_mode::switch(v);
                 }
-                Config::set_options(value);
+                Config::set_options(keep_protected_options(value));
                 allow_err!(stream.send(&Data::Options(None)).await);
             }
         },
@@ -1046,8 +1079,9 @@ async fn handle(data: Data, stream: &mut Connection) {
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
         }
         Data::SyncConfig(Some(configs)) => {
-            let (config, config2) = *configs;
+            let (config, mut config2) = *configs;
             let _chk = CheckIfRestart::new();
+            config2.options = keep_protected_options(config2.options);
             Config::set(config);
             Config2::set(config2);
             allow_err!(stream.send(&Data::SyncConfig(None)).await);
