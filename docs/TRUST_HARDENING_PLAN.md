@@ -136,6 +136,22 @@ Build/test findings to carry forward (none of them are product bugs except the t
 
 **Not yet verified:** a fully authenticated session (needs a human to click accept on the laptop, then file transfer/clipboard in both directions); the hostile-peer file-name and clipboard cases (Phase L); the F5 plaintext-downgrade branches end to end; `--cm`/`--tray` in isolation and a 24 h soak; behaviour with Smart App Control enforcing; the IPC allow-list on Windows (Phase W: a different exe must not be able to drive the service); update/uninstall from a user account without admin.
 
+### 2d. Attended session through the full flow, driven over VNC (2026-10-05)
+
+The Windows desktop on the test laptop was driven from this machine with a VNC client (`vncdotool`) so that the accept click could be made without a person at the machine. Same hbbs/hbbr, installed build and Linux controller as 2c, controller on a virtual display. **[measured]**
+
+| Step | Result |
+|---|---|
+| Install + open the app via its desktop shortcut | window shows the ID and a **one-time password**; the refresh/edit icons next to it are disabled (no permanent password, D7) |
+| Linux controller `--connect <id> --password <one-time>` | secure channel established (green shield); controller shows "Please wait for the remote side to accept your session request..." |
+| Laptop side | connection manager window appears with the controller's name and a permission panel: keyboard, clipboard, audio, file transfer **on**; restart, camera, block input, privacy mode **off**; buttons Accept / Cancel |
+| Accept clicked via VNC | session starts: AV1 video + 48 kHz audio negotiated, controller shows the laptop's real desktop; the **one-time password rotated** immediately after use |
+| Egress during the accepted session (~5 min) | laptop `handover.exe` processes: 6 connections, all to the own hbbs (21115, 21116 tcp+udp) and hbbr (21117); 0 blocked; no vendor DNS. Controller: 2 connects (21116, 21117), no name lookups |
+
+**Not verified:** keyboard/mouse injection. The controller on a bare Xvfb display (no window manager) reported my clicks (`onPointDownImage`) but the laptop's cursor stayed at (0,0) and typed text did not appear; the server log shows no input error. Most likely a controller-side coordinate/focus problem without a window manager; needs a repeat under a real window manager (openbox is in the Arch `extra` repo, or the Hyprland session). Clipboard, file transfer and the refused features (terminal, tunnel, camera, restart) were not exercised either.
+
+Observations to fix (small): the main window still says "Unterstuetzt von RustDesk" (powered-by) and a status line inviting you to set up your own server (the link is inert now); the server log shows `printer service init failed` (leftover printer code, harmless but should go); the connection manager shows the controller's OS user name as the display name.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
