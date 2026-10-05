@@ -380,6 +380,13 @@ pub struct PeerConfig {
     )]
     pub custom_resolutions: HashMap<String, Resolution>,
 
+    #[serde(
+        default,
+        deserialize_with = "deserialize_string",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub pinned_pk: String,
+
     // The other scalar value must before this
     #[serde(
         default,
@@ -394,12 +401,6 @@ pub struct PeerConfig {
     pub info: PeerInfoSerde,
     #[serde(default)]
     pub transfer: TransferSerde,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub pinned_pk: String,
 }
 
 impl Default for PeerConfig {
@@ -3697,5 +3698,17 @@ mod tests {
         let non_service_root = Config::ipc_path_for_uid(ROOT_UID, "");
         let non_service_user = Config::ipc_path_for_uid(USER_UID, "");
         assert_ne!(non_service_root, non_service_user);
+    }
+
+    #[test]
+    fn pinned_peer_key_survives_a_store_and_load() {
+        let path = std::env::temp_dir().join(format!("handover_pin_test_{}.toml", std::process::id()));
+        let mut config = PeerConfig::default();
+        config.pinned_pk = "a-pinned-key".to_owned();
+        config.options.insert("k".to_owned(), "v".to_owned());
+        store_path(path.clone(), &config).expect("a pinned key must serialize");
+        let loaded: PeerConfig = load_path(path.clone());
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(loaded.pinned_pk, "a-pinned-key");
     }
 }
