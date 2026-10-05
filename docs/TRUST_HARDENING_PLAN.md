@@ -189,7 +189,7 @@ Same setup as 2d, with the Windows installer rebuilt from the then-current `HEAD
 | `connections.log` on the laptop | recorded: new connection, the refused first login, `authorized peer ... (Lenny)`, both refused features with reasons, the closes (#13 end to end) |
 | Egress | laptop `handover.exe`: 10 connections, all to the own hbbs (21115/21116 tcp+udp) and hbbr (21117), 0 blocked, no new DNS names; controller: only 21116/21117, no lookups |
 
-Observed, not explained: while a session was active the laptop's own Handover main window turned dim and ignored input (also for local VNC input), and its connection-manager window disappeared after Accept. Notepad was unaffected. Needs a look (possibly an intentional lock of the main window during a session, or a modal barrier without a visible dialog).
+Explained: while a session is active the laptop's own Handover main window turns dim and ignores input. This is an upstream protection, not a defect: `buildRemoteBlock` in `flutter/lib/common.dart` masks (50% black) and blocks the main window right after remote input so a remote peer cannot click through the local settings UI; Notepad and other apps are unaffected. It stays as is. (The connection-manager window also hides itself after Accept.)
 
 Not exercised: file transfer end to end, Windows lock/UAC screens, switching sides, a session surviving a service restart, the 24 h soak.
 
