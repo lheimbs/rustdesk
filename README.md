@@ -1,3 +1,15 @@
+> [!IMPORTANT]
+> **Handover is a personal, hardened fork of [RustDesk](https://github.com/rustdesk/rustdesk).** It is not affiliated
+> with or endorsed by the RustDesk project or its company. It is built for one purpose: remote support between a few
+> machines you own, against your own open-source `hbbs`/`hbbr` server, with no vendor servers, telemetry, update channel
+> or prebuilt binaries. The goals, audit findings, measurements and work plan are in
+> [`docs/TRUST_HARDENING_PLAN.md`](docs/TRUST_HARDENING_PLAN.md) and the status is tracked in issue #32.
+>
+> **Licence and source offer:** this software is licensed under the GNU AGPL-3.0 ([`LICENCE`](LICENCE)); the original
+> copyright notices are kept. The complete corresponding source of every build is this repository (third-party forks
+> are vendored in `third_party/`; the server patches are in `server/patches/`). Everything below this notice is the
+> unmodified upstream README and describes upstream RustDesk, not this fork.
+
 <p align="center">
   <img src="res/logo-header.svg" alt="RustDesk - Your remote desktop"><br>
   <a href="#raw-steps-to-build">Build</a> •
