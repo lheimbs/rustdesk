@@ -152,6 +152,24 @@ The Windows desktop on the test laptop was driven from this machine with a VNC c
 
 Observations to fix (small): the main window still says "Unterstuetzt von RustDesk" (powered-by) and a status line inviting you to set up your own server (the link is inert now); the server log shows `printer service init failed` (leftover printer code, harmless but should go); the connection manager shows the controller's OS user name as the display name.
 
+### 2e. Work-through of the open stories (2026-10-05, after 2d)
+
+| Story | Result |
+|---|---|
+| #30 pinned key never persisted | **real security bug in the TOFU pinning, fixed** (`6d10ca551`): `pinned_pk` (plain value) was declared after the table-valued `PeerConfig` fields, so serialisation failed and the pin was dropped; regression test fails before / passes after; 101 (now 102) `hbb_common` tests pass |
+| #13 connection log | `connections.log` (new connection, authorised, refused login, close; owner-only, rotated at 5 MiB; peer text stripped of control characters, unit test). Brute-force: counters keyed by the peer address hbbs supplies, one-time password rotates after repeated failures (read in `connection.rs`) |
+| #15 leftover strings | `using_public_server()` always false (removes the "set up your own server" hint), "Powered by RustDesk" widget, Windows printer service start-up, peer message-box link whitelist, doc links and `doc_*` translations removed |
+| #26 egress tool | `tools/egress-check.sh` + `tools/egress-analyze.py`; verified both ways (unhardened trace and the unpatched upstream hbbs FAIL; hardened UI, release bundle and patched servers PASS); liveness check prevents a dead app passing |
+| #29 hostile peer | file names (23 `libs/base` tests), handshake refusals (tests pass, both ends bail) and clipboard are covered; found and fixed one gap: a saved peer config without the field loaded with clipboard **enabled** (`c030b3f2b`, test added) |
+| #24 Linux build | `tools/build-linux.sh`; a full release build (fat LTO) fits in a 5.5 GB memory limit; vendor-host scan passes; the release bundle passes the egress check |
+| #25 server | `cargo audit` on the patched server: 10 advisories left, all triaged as unreachable (README); rustls bumped by a lockfile-only patch |
+| #20 vendoring | all 59 git-sourced packages (35 MB) vendored in `third_party/`; `cargo check --locked --offline` succeeds with Cargo's git cache hidden; cargo-deny sources pass. Note: the vendored files are force-added and marked `-text` (they carry files `.gitignore` drops; Cargo checksums every byte) |
+| #31 docs | audit table with fix status in `AGENTS.md`; fork notice and AGPL source offer in the README |
+| #22 dependency trim | **assessed, not done**: removing `webm`/`nokhwa` touches ~118 camera references and the recorder wiring in the video service; removing `reqwest` touches 47 HTTP-helper call sites. All of it is already stubbed or refused at runtime, so the diff/regression risk outweighs the benefit; needs an explicit go-ahead |
+| #23 reproducible build | the wall-clock build date was stamped into every binary; `SOURCE_DATE_EPOCH` is now honoured and `build-linux.sh` sets it and remaps paths. Determinism experiment (same commit, two directories) was started; result recorded in the issue |
+
+Still open: keyboard/mouse injection and clipboard/file-transfer/refused-feature checks on the laptop (#28; blocked on a window manager for the controller's virtual display), Windows signing decision (#18), final acceptance (#27).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
