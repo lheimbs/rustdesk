@@ -4,11 +4,10 @@ Status: **v5**, 2026-10-04 (three adversarial review passes + Phase 0 measuremen
 hbb_common `229b904` (checked out from the vendor repo; its diff vs. what the client expects was not audited),
 server `rustdesk-server @ a7736be` (1.1.17-dev, its hbb_common `69cea8d`).
 
-**Nothing here has been built or run.** `cargo`, `rustc`, `flutter`, `cargo-audit`, `cargo-deny` are not
-installed on this machine. Evidence tags: **[V]** read in code by the lead or re-read by the fact-checker,
-**[A]** reported by an audit agent from code, **[U]** unverified. Phase 0 exists to turn [A]/[U] into measured facts.
-"100% verified" is therefore not claimable for runtime behaviour; it is claimable for the code references
-tagged [V], and the egress test (D4) is the final arbiter.
+**Evidence tags:** **[V]** read in code by the lead or re-read by a fact-checker, **[A]** reported by an audit agent from code,
+**[measured]** observed by running the code (network namespace + strace), **[U]** unverified. The unmodified master and the hardened
+branch `handover/trust-hardening` have both been built and run on this machine (§2a, §2b). "100% verified" is claimable only for
+what was measured; the egress test (D4) is the final arbiter and must be re-run after every change.
 
 ## 1. Goal and scope
 
@@ -98,6 +97,44 @@ Also seen: `fuse init failed: Can't mount path /run/user/1000/doc` (portal FUSE)
 Third-party git crates (35, `~/.cargo/git/checkouts`) were read by an agent (patterns + fork commits, not line-by-line): no backdoor, telemetry or hidden egress found; the only
 network-capable ones are the expected `webrtc`, `tokio-tungstenite`, `tungstenite`, `tokio-socks` (+ local IPC `parity-tokio-ipc`); `cpal/asio-sys` downloads the ASIO SDK at build time (Windows feature only);
 `hwcodec`, `rust-sciter`, and the Apple/Android crates were not fully read (off/unreachable). Transitive crates.io dependencies remain for `cargo audit`/`cargo deny` (Phase 8).
+
+### 2b. Hardened branch check (2026-10-05, `handover/trust-hardening` @ 4537baf53)
+
+| Check | Result |
+|---|---|
+| `cargo check --locked --features flutter,linux-pkg-config --lib`, then `--bin rustdesk` and `--lib` builds | **pass** (Rust 1.75.0) |
+| `cargo build` with default features (no `flutter`) | fails **by design**: `compile_error!("the Sciter UI was removed; build with --features flutter")` (`src/lib.rs:31`) |
+| `cargo test --locked --features flutter,linux-pkg-config --lib` | 321 passed, **1 failed**: `platform::tests::test_get_cursor_pos` (`assertion failed: !get_cursor_pos().is_none()`, `src/platform/mod.rs:243`). Needs a real display, none in this session; **not** checked against unmodified master, so "environment-dependent", not "proven pre-existing". Other test targets (hbb_common, libs/*) not run in this pass |
+| Source grep for vendor hosts (`rustdesk.com/.cn`, `rs-ny`, `stun.*`, `nip.io`, `api.telegram`, `admin.rustdesk`) in `*.rs *.dart *.toml *.py *.json *.yaml` | Rust: none in production code (remaining: tests in `websocket.rs`, comments, `is_public()` `common.rs:1081`, doc-link consts `config.rs:100-101`). **Dart (before the 2026-10-05 edit; desktop sites since removed, mobile-only sites left, see 2c)**: Phase 7 was **not finished**: `desktop_home_page.dart:438,531,542,548`, `desktop/pages/connection_page.dart:44`, `common.dart:3741`, `desktop_setting_page.dart:2557,2565`, `install_page.dart:190,192`, `mobile/pages/{connection,settings}_page.dart`. Also `build.py:365-366` and `Cargo.toml:4`/`libs/base/Cargo.toml:4` (`info@rustdesk.com` metadata) |
+| Flutter UI (`handover`, bundled `librustdesk.so` refreshed from HEAD's Rust build) in an offline netns, Xvfb, 75 s, own hbbs/hbbr + logging :21114 listener, **no config** and **self-hosted config** | **[measured]** 0 `AF_INET`/`AF_INET6` socket calls, 0 resolver requests, 0 requests to the :21114 listener, in both runs; log shows `server not started ... no_server: true` (outgoing-only). Control, same method on the unhardened UI: 48 `AF_INET` calls and 12 resolver requests (`api.rustdesk.com`, the 4 STUN hosts) |
+
+Limits of this measurement: idle UI only. Not yet measured on the hardened build: the **connect** path (needs a controlled peer; the Linux build has none by design, so this requires the Windows host, Phase W), the Windows controlled side, file transfer/clipboard, and a soak. The bundle's `librustdesk.so` was swapped for the HEAD build; the Dart side of the bundle was built 2026-10-04 21:27 (before the dependency-bump commits), so it is not a clean HEAD build (Phase 9 must rebuild everything from one commit). Local-only build workarounds are unchanged (§2a).
+
+### 2c. Windows controlled side + Linux controller end to end (2026-10-05)
+
+Host: `<test-laptop>` (physical, Windows 11 Home, German locale, Smart App Control off), own `hbbs`/`hbbr` (patched build, `-k _`) on the overlay network address <overlay-ip>,
+Linux Flutter controller (outgoing-only) on this machine. Everything below was **[measured]** unless marked.
+
+| Step | Result |
+|---|---|
+| `cargo check --locked --features flutter` on Windows (MSVC, Rust 1.75) | pass |
+| `tools/build-windows.ps1` (release Rust lib 13 min, `flutter build windows --release`, packer) | **pass**, `handover-install.exe` 23.8 MB, SHA-256 `8c9595e4bc8d60ea772469b447d2f7040d3cfae3058287a3c1affe05ed0ecffa`; server address and key compiled in (strings: `<overlay-ip>`, `<server-key>`) |
+| Strings in `librustdesk.dll` / `handover.exe` for vendor hosts, STUN, nip.io, Telegram, Sentry, Firebase | none; remaining `rustdesk.com/docs/...` text are static link strings in the translation/link tables (no code path opens them: Dart launchers neutralised) |
+| Install (`handover.exe --silent-install`, elevated over SSH) | service `Handover` Automatic/Running as SYSTEM (session 0 `--service`/`--server`), tray + UI in session 1; **one outbound-only firewall rule, no inbound rule**; installed under `C:\Program Files\Handover` |
+| Registration | peer ID registered at hbbs from the laptop's overlay network IP |
+| Egress of all `handover.exe` processes, idle ~2 min after a service restart (Windows Filtering Platform audit 5156/5157, DNS client cache) | exactly 4 connections, all to the own server: TCP 21116 x2, TCP 21115, UDP 21116. **0 blocked, 0 DNS names** besides the overlay network's own control host |
+| Incoming relayed connection from the Linux controller (hbbs -> relay request -> hbbr `got paired`) | additional TCP 21117 (hbbr) only; **no `/api/audit/conn` POST, no :21114 traffic, no DNS** (the baseline leaked an audit POST here, R4) |
+| Authorisation | the session stayed **unauthorised**: Windows log `Connection opened` -> `Start cm` -> `Discarding file clipboard message before authorization` -> `Reset by the peer` after the test timeout; I sent a wrong password and nobody clicked accept. The controller's `Change permission ... -> false` lines are initial defaults, not a grant |
+| Fail-closed with no server configured (Linux controller) | `rendezvous server: :21116`, `failed to lookup address information`; no fallback to a vendor host |
+| Uninstall (`handover.exe --uninstall`) | service, install dir, firewall rule, uninstall registry key, startup shortcut all removed (the process returned exit code 1 although everything was removed); audit policy restored to failure-only; machine otherwise unchanged. Signing/trusting a self-signed certificate was **not** done (it would add a root CA to `LocalMachine\Root` on the physical laptop; unsigned works with Smart App Control off) |
+
+Build/test findings to carry forward (none of them are product bugs except the two marked **repo**):
+- **repo**: `vcvars64.bat` overwrites `VCPKG_ROOT` with Visual Studio's own vcpkg, so `magnum-opus` (which looks in `%VCPKG_ROOT%\installed\x64-windows-static`) missed the Opus headers; fixed in `tools/build-windows.ps1` (set after `vcvars`, create the `installed` junction to the vcpkg install root).
+- **repo**: the committed `flutter/pubspec.lock` was not what Flutter 3.24.5 resolves, so `flutter pub get --enforce-lockfile` failed; regenerated under the pinned SDK (only hosted/SDK-bundled version changes, no source changes), now passes with `--enforce-lockfile`.
+- Test harness: reusing a cached `target/` after wiping the source tree leaves `src/version.rs` (generated by `build.rs`, git-ignored) missing: clear the `rustdesk-*` build output or build from a clean checkout. The Windows here is German: `auditpol` sub-category names are localised, use the GUID `{0CCE9226-69AE-11D9-BED3-505054503030}`. The rebranded config path is `~/.config/handover/Handover2.toml` (old `RustDesk2.toml` is ignored). `Start-Process -Wait` on the installer never returns (children keep running).
+- Linux controller: a `Failed to store config: Failed to serialize configuration data into TOML` error is logged at session start (`hbb_common::config`); not investigated, no functional effect seen. Needs a look (Phase 11).
+
+**Not yet verified:** a fully authenticated session (needs a human to click accept on the laptop, then file transfer/clipboard in both directions); the hostile-peer file-name and clipboard cases (Phase L); the F5 plaintext-downgrade branches end to end; `--cm`/`--tray` in isolation and a 24 h soak; behaviour with Smart App Control enforcing; the IPC allow-list on Windows (Phase W: a different exe must not be able to drive the service); update/uninstall from a user account without admin.
 
 ## 3. Design decisions
 
