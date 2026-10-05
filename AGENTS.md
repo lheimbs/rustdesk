@@ -101,6 +101,35 @@ this table: `hbb_common` contains **no** `rs-cn` default, only `rs-ny.rustdesk.c
 The 35 git-sourced crates were also pattern-audited and showed no backdoor or telemetry
 (plan §2a); transitive crates.io dependencies are covered by `cargo audit` (plan U7).
 
+### Fix status (branch `handover/trust-hardening`, 2026-10-05)
+
+Epic: issue #32. "Measured" = observed in an offline network namespace or on the Windows test machine (plan sections 2a-2d).
+
+| # | Status | Commit / issue |
+|---|--------|----------------|
+| A1 | fixed, measured | `ad6184e0f` (own server and key baked in from env/`.env`, `f476314e8`; fails closed) |
+| A2 | fixed, measured | `a84caab62` |
+| A3 | fixed, measured | `a416f0c4a` (API server empty, sync/audit/upload stubbed); account/address-book UI hidden in `80bf992ff` |
+| A4 | inert, code still present | `is_public()` has no effect with an empty API server; removal left to #15 |
+| A5 | fixed | `a416f0c4a` (no server-pushed config writes; `ConfigureUpdate` ignored in `ad6184e0f`) |
+| A6 | fixed (Windows) | `5e7c5ec28` (exe-name licence and `custom.txt` removed) |
+| A7 | fixed | `a416f0c4a` |
+| A8 | partial | desktop links `2040fe9c2`, `4fb73916b`; remaining strings and mobile-only files: #15 |
+| B1, B2 | removed from the supported builds | `5e7c5ec28`, `4fb73916b` (virtual display, printer driver) |
+| B3, B5 | not used | `tools/build-*.{sh,ps1}` use the stock Flutter 3.24.5 engine and fetch no vendor binaries |
+| B4 | fixed | `7f143873a` |
+| B6 | not enabled | the builds use only `--features flutter`; no hwcodec/vram/mediacodec/drm |
+| C1 | fixed | `bf4b97f5f`, `6b4ee6c86` (cargo-deny source policy); vendoring the small forks: #20 |
+| C2 | fixed | `394d3e631` |
+| C3 | open | plugins are pinned by commit but unreviewed; lock regenerated under the pinned SDK `9b0a30e7c` |
+| C4 | avoided | `build.py` is not used; see `tools/build-linux.sh`, `tools/build-windows.ps1` (reproducible environment: #23) |
+| C5 | partial | own signing scripts `e22f98704`; Windows signing decision: #18 |
+
+New findings since the table above was written (all fixed unless linked): plaintext-downgrade branches in the handshake and the
+controlled side (`ad6184e0f`); `id@host` and direct dialling (`ad6184e0f`); peer-supplied avatar URLs (`73a9e3703`); LAN discovery and
+direct server (`73a9e3703`); the pinned peer key was never persisted (`6d10ca551`); peer clipboard defaults (`3c598ec29`, `c030b3f2b`);
+no record of who connected (`8d2e48606`).
+
 ### Work plan (do in this order; one PR-sized change each)
 
 1. **Vendor `hbb_common`.** Initialise and audit it, then decide: fork it under the
