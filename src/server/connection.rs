@@ -7983,4 +7983,22 @@ mod test {
         assert!(!replaced_by(&conn(3, remote, key(8, "peer")), 2, &mine));
         assert!(!replaced_by(&conn(3, remote, key(7, "other")), 2, &mine));
     }
+
+    #[test]
+    fn dangerous_features_are_never_permitted() {
+        for option in [
+            keys::OPTION_ENABLE_TERMINAL,
+            keys::OPTION_ENABLE_TUNNEL,
+            keys::OPTION_ENABLE_CAMERA,
+            keys::OPTION_ENABLE_REMOTE_RESTART,
+            keys::OPTION_ENABLE_RECORD_SESSION,
+            keys::OPTION_ENABLE_REMOTE_PRINTER,
+            keys::OPTION_ENABLE_PRIVACY_MODE,
+            keys::OPTION_ENABLE_BLOCK_INPUT,
+        ] {
+            assert!(!Connection::permission(option, &None), "{option} must stay disabled");
+            assert!(!Connection::is_permission_enabled_locally(option), "{option} must stay disabled");
+        }
+        assert!(Connection::permission(keys::OPTION_ENABLE_KEYBOARD, &None));
+    }
 }

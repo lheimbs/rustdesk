@@ -170,6 +170,29 @@ Observations to fix (small): the main window still says "Unterstuetzt von RustDe
 
 Still open: keyboard/mouse injection and clipboard/file-transfer/refused-feature checks on the laptop (#28; blocked on a window manager for the controller's virtual display), Windows signing decision (#18), final acceptance (#27).
 
+### 2f. Second laptop session: input, clipboard, refused features, connection log (2026-10-05)
+
+Same setup as 2d, with the Windows installer rebuilt from the then-current `HEAD` (vendored `third_party/`, connection log, printer removal) and the controller on a virtual display **with a minimal window manager**
+(the earlier failure to deliver input came from the controller running without one; a 60-line Python WM that maps windows and sets focus was enough). **[measured]**
+
+| Check | Result |
+|---|---|
+| Installer built from `HEAD` on Windows with the vendored dependencies | pass (this also exercised `third_party/` on a second platform) |
+| UI on the laptop | no "Powered by RustDesk" text, no "set up your own server" hint (#15) |
+| Keyboard injection (controller -> Notepad on the laptop) | **works**: typed text arrives |
+| Mouse injection | **works**: dragging the Notepad title bar from the controller moves the window on the laptop |
+| Peer clipboard -> controller, default | **blocked** (the toolbar shows "Disable clipboard" checked; text copied on the laptop did not reach the controller) |
+| Same with the setting unticked (positive control) | the text arrives, so the earlier block was the setting, not a broken path |
+| Terminal | **refused** by the laptop: "Login error: No permission of terminal" (also logged) |
+| View camera | **refused**: "No permission of viewing camera" |
+| TCP tunneling, remote restart, recording, printer, privacy mode, block input | in the same hard-coded `is_always_disabled` list as the two above (unit test `dangerous_features_are_never_permitted`); tunnel not exercised live (the session ended before the forward test) |
+| `connections.log` on the laptop | recorded: new connection, the refused first login, `authorized peer ... (Lenny)`, both refused features with reasons, the closes (#13 end to end) |
+| Egress | laptop `handover.exe`: 10 connections, all to the own hbbs (21115/21116 tcp+udp) and hbbr (21117), 0 blocked, no new DNS names; controller: only 21116/21117, no lookups |
+
+Observed, not explained: while a session was active the laptop's own Handover main window turned dim and ignored input (also for local VNC input), and its connection-manager window disappeared after Accept. Notepad was unaffected. Needs a look (possibly an intentional lock of the main window during a session, or a modal barrier without a visible dialog).
+
+Not exercised: file transfer end to end, Windows lock/UAC screens, switching sides, a session surviving a service restart, the 24 h soak.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
