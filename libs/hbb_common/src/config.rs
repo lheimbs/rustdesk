@@ -203,6 +203,39 @@ macro_rules! serde_field_bool {
     };
 }
 
+// Like `serde_field_bool!` but on unless the user default explicitly says "N".
+macro_rules! serde_field_bool_default_on {
+    ($struct_name: ident, $field_name: literal, $func: ident, $default: literal) => {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct $struct_name {
+            #[serde(default = $default, rename = $field_name, deserialize_with = "deserialize_bool")]
+            pub v: bool,
+        }
+        impl Default for $struct_name {
+            fn default() -> Self {
+                Self { v: Self::$func() }
+            }
+        }
+        impl $struct_name {
+            pub fn $func() -> bool {
+                UserDefaultConfig::read($field_name) != "N"
+            }
+        }
+        impl Deref for $struct_name {
+            type Target = bool;
+
+            fn deref(&self) -> &Self::Target {
+                &self.v
+            }
+        }
+        impl DerefMut for $struct_name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.v
+            }
+        }
+    };
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NetworkType {
     Direct,
@@ -2086,7 +2119,7 @@ serde_field_bool!(
     default_enable_file_copy_paste,
     "EnableFileCopyPaste::default_enable_file_copy_paste"
 );
-serde_field_bool!(
+serde_field_bool_default_on!(
     DisableClipboard,
     "disable_clipboard",
     default_disable_clipboard,
@@ -3710,5 +3743,14 @@ mod tests {
         let loaded: PeerConfig = load_path(path.clone());
         let _ = std::fs::remove_file(&path);
         assert_eq!(loaded.pinned_pk, "a-pinned-key");
+    }
+
+    #[test]
+    fn peer_clipboard_is_disabled_unless_the_user_enabled_it() {
+        assert!(PeerConfig::default().disable_clipboard.v);
+        let without_field: PeerConfig = toml::from_str("").unwrap();
+        assert!(without_field.disable_clipboard.v);
+        let enabled: PeerConfig = toml::from_str("disable_clipboard = false").unwrap();
+        assert!(!enabled.disable_clipboard.v);
     }
 }
