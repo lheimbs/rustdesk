@@ -14,6 +14,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-dist}
 export PATH=$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$PATH
+# Reproducibility: fixed build date from the commit time, source paths remapped.
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$PWD=/handover-src --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME/.rustup=/rustup"
 # Old bundled C++ (libwebm) does not include <cstdint>; newer GCC no longer provides it implicitly.
 export CXXFLAGS="${CXXFLAGS:-} -include cstdint"
 

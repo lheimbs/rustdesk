@@ -237,8 +237,16 @@ pub fn gen_version() {
             break;
         }
     }
-    // generate build date
-    let build_date = format!("{}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+    // generate build date; SOURCE_DATE_EPOCH (UTC) makes the build reproducible
+    println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
+    let fixed = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|t| t.parse::<i64>().ok())
+        .and_then(|t| chrono::TimeZone::timestamp_opt(&chrono::Utc, t, 0).single());
+    let build_date = match fixed {
+        Some(t) => format!("{}", t.format("%Y-%m-%d %H:%M")),
+        None => format!("{}", chrono::Local::now().format("%Y-%m-%d %H:%M")),
+    };
     file.write_all(
         format!("#[allow(dead_code)]\npub const BUILD_DATE: &str = \"{build_date}\";\n").as_bytes(),
     )
