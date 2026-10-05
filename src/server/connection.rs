@@ -1519,6 +1519,7 @@ impl Connection {
             audit["conn_audit_ref"] = json!(audit_ref);
         }
         self.post_conn_audit(audit);
+        super::connection_log::record(self.inner.id(), "connection", &addr.ip().to_string());
         true
     }
 
@@ -1929,6 +1930,11 @@ impl Connection {
             audit["two_factor"] = json!(self.conn_audit_two_factor.as_i64());
         }
         self.post_conn_audit(audit);
+        super::connection_log::record(
+            self.inner.id(),
+            "authorized",
+            &format!("peer {} ({}) from {} type {}", self.lr.my_id, self.lr.my_name, self.ip, conn_type),
+        );
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         let mut res = LoginResponse::new();
@@ -2387,6 +2393,11 @@ impl Connection {
         let mut msg_out = Message::new();
         let mut res = LoginResponse::new();
         res.set_error(err.to_string());
+        super::connection_log::record(
+            self.inner.id(),
+            "login-refused",
+            &format!("{} from {}: {}", self.lr.my_id, self.ip, err.to_string()),
+        );
         if err.to_string() == crate::client::REQUIRE_2FA {
             res.enable_trusted_devices = Self::enable_trusted_devices();
         }
@@ -5268,6 +5279,7 @@ impl Connection {
         // But it's not necessary now and we have to consider two audio services(client, server).
         crate::audio_service::set_voice_call_input_device(None, true);
         log::info!("#{} Connection closed: {}", self.inner.id(), reason);
+        super::connection_log::record(self.inner.id(), "closed", reason);
         if lock
             && self.lock_after_session_end
             && self.keyboard

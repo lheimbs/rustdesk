@@ -69,6 +69,7 @@ pub mod input_service {
 }
 
 mod connection;
+mod connection_log;
 mod login_failure_check;
 pub(crate) mod port_forward_mux;
 pub mod display_service;
