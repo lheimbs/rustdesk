@@ -169,6 +169,9 @@ no record of who connected (`8d2e48606`).
   archives. Anything fetched at build time must be pinned by hash and listed in the audit table above.
 * **Dependencies:** pin by `rev`/exact version; prefer removing a dependency to adding one.
   New git dependencies require the user's approval.
+  Every git-sourced dependency is vendored in `third_party/` (via `.cargo/config.toml` source replacement);
+  never edit it by hand: change the rev, `cargo update -p <name>`, run `tools/vendor-forks.sh`, review the diff.
+  crates.io dependencies are not vendored; `Cargo.lock` checksums pin them.
 * **Fail closed.** Missing server/key configuration is an error shown to the user, never a
   silent fallback to a vendor default.
 * **Never trust the server with local config.** Remote peers and servers must not be able to

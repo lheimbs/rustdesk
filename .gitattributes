@@ -1,1 +1,3 @@
 * text=auto
+# Vendored crates must stay byte-identical: Cargo checksums every file.
+third_party/** -text
