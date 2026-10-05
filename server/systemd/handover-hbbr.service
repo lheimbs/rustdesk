@@ -37,9 +37,9 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 UMask=0077
-# Only your own networks may talk to the server (adjust to your overlay-network range and LAN); everything else is dropped.
+# Only your own networks may talk to the server (HANDOVER_ALLOWED_NETS in .env); everything else is dropped.
 IPAddressDeny=any
-IPAddressAllow=100.64.0.0/10 fd00::/8 192.168.0.0/16 127.0.0.0/8 ::1/128
+IPAddressAllow=@ALLOWED_NETS@
 
 [Install]
 WantedBy=multi-user.target

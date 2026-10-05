@@ -91,8 +91,21 @@ fn check_baked_server() {
     if std::env::var("PROFILE").as_deref() != Ok("release") {
         return;
     }
-    let server = std::env::var("HANDOVER_RENDEZVOUS_SERVER").unwrap_or_default();
-    let key = std::env::var("HANDOVER_SERVER_KEY").unwrap_or_default();
+    println!("cargo:rerun-if-changed=.env");
+    let dotenv = std::fs::read_to_string(".env").unwrap_or_default();
+    let setting = |name: &str| {
+        std::env::var(name).unwrap_or_else(|_| {
+            let prefix = format!("{name}=");
+            dotenv
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix(prefix.as_str()))
+                .next()
+                .map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'').to_owned())
+                .unwrap_or_default()
+        })
+    };
+    let server = setting("HANDOVER_RENDEZVOUS_SERVER");
+    let key = setting("HANDOVER_SERVER_KEY");
     let key_ok = key.len() == 44
         && key.ends_with('=')
         && key[..43]
@@ -101,7 +114,7 @@ fn check_baked_server() {
     if server.is_empty() || !key_ok {
         panic!(
             "release builds need HANDOVER_RENDEZVOUS_SERVER (host) and HANDOVER_SERVER_KEY \
-             (base64 id_ed25519.pub of your hbbs)"
+             (base64 id_ed25519.pub of your hbbs) in the environment or in .env (see .env.example)"
         );
     }
 }

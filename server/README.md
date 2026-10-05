@@ -23,15 +23,18 @@ What the patches change (and why):
 ## Run
 
 Use the hardened units in `server/systemd/` (sandboxing, no capabilities, `IPAddressDeny=any` with an
-allow-list you must adjust to your overlay-network range and LAN):
+allow-list). They are templates: addresses come from your git-ignored `.env` (copy `.env.example`):
 
 ```
+cp .env.example .env     # set HANDOVER_RELAY_HOST and HANDOVER_ALLOWED_NETS (and the client settings)
+server/render-units.sh   # writes server/build/systemd/*.service with your values (git-ignored)
+
 useradd --system --home /var/lib/handover-server --shell /usr/sbin/nologin handover
 install -d -o handover -g handover -m 0700 /var/lib/handover-server
-install -m 0755 build/bin/hbbs build/bin/hbbr /usr/local/bin/
-cp server/systemd/*.service /etc/systemd/system/    # edit RELAY_HOST and the IPAddressAllow ranges
+install -m 0755 server/build/bin/hbbs server/build/bin/hbbr /usr/local/bin/
+cp server/build/systemd/*.service /etc/systemd/system/
 systemctl enable --now handover-hbbs handover-hbbr
-cat /var/lib/handover-server/id_ed25519.pub         # the key baked into every client build
+cat /var/lib/handover-server/id_ed25519.pub         # put this in .env as HANDOVER_SERVER_KEY, then build the clients
 ```
 
 Both units are verified with `systemd-analyze` only (exposure 1.6); they have not been run under

@@ -32,7 +32,9 @@ applies), and network-egress code is deleted or hard-stubbed rather than kept be
   built from source at a pinned commit, run by the user. Do not use the Pro server or its API.
 * The client's only configuration is: `custom-rendezvous-server` (hbbs host), `relay-server`
   (hbbr host) and `key` (contents of hbbs's `id_ed25519.pub`). Bake these in at build time
-  (or fail with a clear error when absent); never fall back to vendor values.
+  (or fail with a clear error when absent); never fall back to vendor values. Deployment-specific
+  values (addresses, keys, allowed networks) live only in the git-ignored `.env` (template:
+  `.env.example`); never commit hostnames, IPs or keys of the user's own network.
 * Run hbbs with `-k _` (reject clients lacking the key) so only builds carrying the user's key
   can register. Consider IP allow-listing on hbbs/hbbr and always set a permanent
   password plus `approve-mode`/whitelist on the controlled side.

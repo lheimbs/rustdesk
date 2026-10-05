@@ -11,7 +11,7 @@ WorkingDirectory=/var/lib/handover-server
 Environment=RUST_LOG=info
 # -k _ : generate/use id_ed25519 in the working directory and refuse clients that do not carry its public key.
 # -r   : host:port of hbbr as clients should reach it (your overlay-network/LAN address).
-ExecStart=/usr/local/bin/hbbs -k _ -r RELAY_HOST:21117
+ExecStart=/usr/local/bin/hbbs -k _ -r @RELAY_HOST@
 Restart=on-failure
 RestartSec=3
 
@@ -38,9 +38,9 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 UMask=0077
-# Only your own networks may talk to the server (adjust to your overlay-network range and LAN); everything else is dropped.
+# Only your own networks may talk to the server (HANDOVER_ALLOWED_NETS in .env); everything else is dropped.
 IPAddressDeny=any
-IPAddressAllow=100.64.0.0/10 fd00::/8 192.168.0.0/16 127.0.0.0/8 ::1/128
+IPAddressAllow=@ALLOWED_NETS@
 
 [Install]
 WantedBy=multi-user.target

@@ -1,7 +1,8 @@
 <#
 Build the Handover Windows installer (handover-install.exe) on a Windows 10/11 x64 build host.
 
-  .\tools\build-windows.ps1 -Server <overlay-ip> -Key '<id_ed25519.pub of your hbbs>'
+  .\tools\build-windows.ps1                       # reads HANDOVER_* from .env (see .env.example)
+  .\tools\build-windows.ps1 -Server <host> -Key <id_ed25519.pub of your hbbs>   # or pass them explicitly
 
 Prerequisites (see docs/TRUST_HARDENING_PLAN.md, Phase W): Visual Studio 2022 Build Tools (C++ x64 + Windows SDK),
 LLVM 15.0.6, Rust 1.75 (rust-toolchain.toml), Flutter 3.24.5, Python 3 (+ pip install brotli),
@@ -11,8 +12,8 @@ run in the repo root (installed under -VcpkgInstalled), and the generated bridge
 The server address and key are compiled into the binary; a release build refuses to build without them.
 #>
 param(
-  [Parameter(Mandatory = $true)][string]$Server,
-  [Parameter(Mandatory = $true)][string]$Key,
+  [string]$Server,
+  [string]$Key,
   [string]$VcpkgRoot = 'C:\dev\vcpkg',
   [string]$VcpkgInstalled = 'C:\dev\vcpkg_installed',
   [string]$FlutterBin = 'C:\dev\flutter\bin'
@@ -20,6 +21,16 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
+
+$dotenv = @{}
+if (Test-Path .env) {
+  Get-Content .env | ForEach-Object {
+    if ($_ -match '^\s*([A-Z_][A-Z0-9_]*)=(.*)$') { $dotenv[$Matches[1]] = $Matches[2].Trim().Trim('"', "'") }
+  }
+}
+if (-not $Server) { $Server = $dotenv['HANDOVER_RENDEZVOUS_SERVER'] }
+if (-not $Key) { $Key = $dotenv['HANDOVER_SERVER_KEY'] }
+if (-not $Server -or -not $Key) { throw 'set HANDOVER_RENDEZVOUS_SERVER and HANDOVER_SERVER_KEY in .env (see .env.example) or pass -Server and -Key' }
 
 $vcvars = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
