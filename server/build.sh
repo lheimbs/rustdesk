@@ -32,6 +32,7 @@ fi
 
 git -C "$SRC" apply "$HERE/patches/0001-hardening.patch"
 git -C "$SRC/libs/hbb_common" apply "$HERE/patches/0002-hbb_common-no-version-check.patch"
+git -C "$SRC" apply "$HERE/patches/0003-bump-rustls.patch"
 
 (cd "$SRC" && cargo +"$TOOLCHAIN" build --release --locked)
 

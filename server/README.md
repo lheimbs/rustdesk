@@ -19,6 +19,7 @@ What the patches change (and why):
 |---|---|
 | `0001-hardening.patch` | `hbbs` no longer makes its only outbound connection (a daily update check to the vendor, measured in an offline netns); unused `reqwest`, `axum` and `minreq` dependencies are removed (drops `h2`, `hyper`, `axum-core`, `native-tls` from the tree); lock bumps for `anyhow`, `crossbeam-epoch`, `openssl`; WebSocket connections on 21118/21119 are refused before any HTTP parsing (the browser client is not used and the WebSocket stack, `tungstenite` 0.17, has a remote DoS advisory). |
 | `0002-hbb_common-no-version-check.patch` | removes the hard-coded vendor version-check URL and request builder from the shared library. |
+| `0003-bump-rustls.patch` | lockfile only: `rustls` 0.23.42 -> 0.23.45 and `rustls-webpki` 0.103.13 -> 0.103.15 (RUSTSEC-2026-0285). Re-resolving also moved one Windows-only `windows-targets` entry, irrelevant on Linux. |
 
 ## Run
 
@@ -71,3 +72,20 @@ you resolve hostnames; the servers themselves make no outbound connections.
   inferred from the code, not tested), `tungstenite` 0.17 (WebSocket refused before parsing), `quick-xml`
   (wayland build tooling, not in the binary), `rand`, `users`, `remove_dir_all` (not reachable from the
   network). Updating sqlx/tungstenite needs upstream API changes and is not done.
+
+## Known dependency advisories (cargo audit, 2026-10-05)
+
+After the patches, `cargo audit` still lists 10 advisories. None is reachable in `hbbs`/`hbbr`; they are left in place because fixing them means
+rewriting the database layer (sqlx 0.6 -> 0.8) for no runtime benefit:
+
+| Advisory | Crate | Why it is not reachable |
+|---|---|---|
+| RUSTSEC-2026-0194, -0195 | `quick-xml` 0.39 | only a `wayland-scanner` proc-macro (build time) pulled in through `hbb_common` |
+| RUSTSEC-2023-0018 | `remove_dir_all` 0.5 | only via `tempfile` in `protobuf-codegen` (build time) |
+| RUSTSEC-2025-0009, 2024-0336, 2023-0052 | `ring` 0.16, `rustls` 0.20, `webpki` 0.22 | only through `sqlx`'s optional TLS for network databases and `jsonwebtoken`; the server uses a local SQLite file, no TLS handshake happens; the AES overflow panic needs overflow checks (off in release) |
+| RUSTSEC-2022-0090 | `libsqlite3-sys` 0.24 (SQLite 3.39) | needs attacker-controlled data in `sqlite3_snprintf` format strings; the server only uses bound parameters |
+| RUSTSEC-2024-0363 | `sqlx` 0.6 | Postgres/MySQL wire-protocol length bug; not used with SQLite |
+| RUSTSEC-2023-0065 | `tungstenite` 0.17 | WebSocket DoS; WebSocket connections are refused before any HTTP parsing (patch 0001) |
+| RUSTSEC-2025-0040 | `users` 0.11 | no fix exists; local user/group lookups only |
+
+Unmaintained/yanked crates (`ahash`, `crossbeam-channel`, `ed25519` 1.5, `spin`) are listed by `cargo audit` as warnings only.
