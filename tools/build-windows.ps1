@@ -31,8 +31,13 @@ $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
 $env:VCPKG_DISABLE_METRICS = '1'
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\Program Files\LLVM\bin;C:\Program Files\NASM;C:\Program Files\Git\cmd;C:\Program Files\Python312;$FlutterBin;$env:PATH"
 
+if (-not (Test-Path "$VcpkgRoot\installed")) {
+  New-Item -ItemType Junction -Path "$VcpkgRoot\installed" -Target $VcpkgInstalled | Out-Null
+}
+
 function Invoke-InVsEnv([string]$cmd) {
-  cmd /c "call `"$vcvars`" >nul && $cmd"
+  # vcvars64.bat overwrites VCPKG_ROOT with Visual Studio's own vcpkg, so set it afterwards
+  cmd /c "call `"$vcvars`" >nul && set `"VCPKG_ROOT=$VcpkgRoot`" && $cmd"
   if ($LASTEXITCODE -ne 0) { throw "failed: $cmd" }
 }
 
