@@ -12,13 +12,26 @@
 # The result is scanned for vendor hosts; the build fails if any are found.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Reproducibility: build from a fixed absolute path. Native code (vendored OpenSSL, C sources) embeds absolute
+# paths that no compiler flag can remap, so the checkout is bind-mounted at /mnt in a private mount namespace
+# (no root needed). HANDOVER_REPRODUCIBLE=0 builds in place instead (the result then depends on where you build).
+if [ -z "${HANDOVER_IN_NS:-}" ] && [ "${HANDOVER_REPRODUCIBLE:-1}" = 1 ]; then
+  if unshare -rm true 2>/dev/null; then
+    export HANDOVER_IN_NS=1 HANDOVER_SRC="$PWD"
+    exec unshare -rm bash -c 'mount --bind "$HANDOVER_SRC" /mnt && cd /mnt && exec tools/build-linux.sh "$@"' _ "$@"
+  fi
+  echo "warning: user/mount namespaces are unavailable; building in place (not reproducible across directories)" >&2
+fi
+[ -z "${HANDOVER_SHOW_ROOT:-}" ] || { pwd; exit 0; }
 OUT=${1:-dist}
 export PATH=$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$PATH
 # Reproducibility: fixed build date from the commit time, source paths remapped.
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
-export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$PWD=/handover-src --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME/.rustup=/rustup"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME/.rustup=/rustup"
+export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$PWD=."
 # Old bundled C++ (libwebm) does not include <cstdint>; newer GCC no longer provides it implicitly.
-export CXXFLAGS="${CXXFLAGS:-} -include cstdint"
+export CXXFLAGS="${CXXFLAGS:-} -include cstdint -ffile-prefix-map=$PWD=."
 
 for t in cargo flutter cmake ninja pkg-config clang; do
   command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 2; }
