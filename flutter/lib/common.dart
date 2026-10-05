@@ -1154,11 +1154,7 @@ Widget createDialogContent(String text) {
         decoration: TextDecoration.underline,
       ),
       recognizer: TapGestureRecognizer()
-        ..onTap = () {
-          String linkText = match.group(0) ?? '';
-          linkText = linkText.replaceAll(RegExp(r'[.,;!?]+$'), '');
-          launchUrl(Uri.parse(linkText));
-        },
+        ..onTap = () {},
     ));
     start = match.end;
   });
@@ -1243,11 +1239,7 @@ void msgBox(SessionID sessionId, String type, String title, String text,
     dialogManager.dismissAll();
   }
 
-  jumplink() {
-    if (link.startsWith('http')) {
-      launchUrl(Uri.parse(link));
-    }
-  }
+  jumplink() {}
 
   if (type != "connecting" && type != "success" && !type.contains("nook")) {
     hasOk = true;
@@ -3737,9 +3729,7 @@ Widget loadPowered(BuildContext context) {
   return MouseRegion(
     cursor: SystemMouseCursors.click,
     child: GestureDetector(
-      onTap: () {
-        launchUrl(Uri.parse('https://rustdesk.com'));
-      },
+      onTap: () {},
       child: Opacity(
           opacity: 0.5,
           child: Text(
