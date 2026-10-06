@@ -207,6 +207,24 @@ Same setup as 2f. **[measured]**
 
 Notes: file transfer exposes everything the logged-in user can read (the listing starts in the user's home folder, including hidden folders); that is the consent given by clicking Accept for that connection, and it is why the per-connection prompt matters. Not exercised: a hostile peer sending unsafe file names (covered by unit tests), Windows lock/UAC screens, session survival across a service restart, the 24 h soak.
 
+### 2h. Acceptance run against Phase 11 (2026-10-06)
+
+| Criterion | Result |
+|---|---|
+| Egress, Linux controller UI, idle, 30 min, offline namespace with an own hbbs/hbbr present | **PASS**: 0 non-loopback destinations, 0 resolved names. The harness now requires the process to still be running when the timeout fires; an earlier run that ended early (my own `pkill` killed its display) had passed vacuously, which is why that check was added |
+| Egress, controller scenarios: servers down, wrong key | **PASS** (only the configured server is contacted, once; no fallback) |
+| Egress, patched hbbs + hbbr, 30 min | **PASS** (0 destinations). Negative control: the unpatched upstream hbbs FAILS (`api.rustdesk.com`) |
+| Egress, Windows controlled side (service, server, tray, connection manager and UI processes all count as `handover.exe`), install + idle + incoming sessions incl. file transfer both ways | **PASS** (3 sessions over 3 days: only own hbbs 21115/21116, hbbr 21117; no vendor DNS) |
+| Egress, accepted attended session, Linux controller | **PASS** (only 21116/21117) |
+| Binary scan, Windows `handover.exe` + `librustdesk.dll` built from HEAD | **clean** (no vendor host, STUN, nip.io, Telegram, Sentry, Firebase strings) |
+| Binary scan, Linux release bundle built from HEAD with `tools/build-linux.sh` | **clean** (the script fails the build on `rustdesk.com/.cn`, vendor servers, STUN, nip.io, telegram.org). Remaining "Telegram" strings are translation labels and a stubbed struct name, no host |
+| UI crawl (controller: settings General/Network/Display/About, ID menu, toolbar menus) with `strace -e connect,execve` | no connection, no link opener or browser executed; settings have no Account/Security pages. Findings: Network still offers "Allow insecure TLS fallback" and "Use WebSocket" toggles (user options, not defaults); the app polls `loginctl` ~200 times in a few minutes (upstream behaviour, wasteful, harmless) |
+| Reproducible build | the same commit built in two different directories gives a **byte-identical** `liblibrustdesk.so` with the shipped fat-LTO profile (SHA-256 `d2147122...c7d6`) and with LTO off; the build script bind-mounts the checkout at `/mnt` and fixes the build date. Not compared: the Flutter bundle/tarball, Windows build |
+| Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
+| `connections.log` | verified on the real machine (2f) |
+
+**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen/UAC behaviour; a session surviving a service restart; tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); the Windows build's reproducibility; running the server units under a real system systemd; Smart App Control machines (signing decision #18); trimming `webm`/`nokhwa`/`reqwest` (#22, needs a go-ahead).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
@@ -246,6 +264,26 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 **D7. Attended-only (user decision 2026-10-04): no unattended access, no camera, no recording.** Every session needs a local click on the controlled machine, so the helped person is always present and consenting. Consequences (all deletions/hard-offs, Phase 6): permanent password (UI, `--password`, `permanent_password.rs` storage), `hide_cm`, `allow-hide-cm`, auto-approve and the `approve-mode` choice (hard `click`), IP whitelist-as-auth, remote restart (`enable-remote-restart`: a restart ends the session and nothing can reconnect without a person), the Linux root service (D10: kept only on Windows), camera (`ViewCamera`, `nokhwa` dep) and session recording (local `record_*`, `scrap` webm/record paths, `rust-webm` dep, `record_upload`). Temporary one-time password stays as a second factor together with the click [recommended, §10].
 
 ## 4. Phases
+
+**Status (2026-10-06, branch `handover/trust-hardening`; epic #32).** Evidence for each row is in section 2a-2h.
+
+| Phase | Status | Issues |
+|---|---|---|
+| 0 baseline and measurements | done | #2 |
+| 1 own the sources (inline hb_common, toolchain pin, remove Sciter) | done | #3, #4 |
+| 2 vendor defaults, fail closed, handshake, pinning, `id@host` | done, measured | #5, #6, #7, #30 |
+| 3 API/Pro surface | done, measured | #8 |
+| 4 updates | done, measured | #9 |
+| 5 third-party hosts | done, measured | #10 |
+| 6 attended-only defaults, local attack surface, connection log | done, measured on the laptop | #11, #12, #13, #29 |
+| 7 UI links and rebrand | done for supported builds | #14, #15 |
+| W Windows controlled side | done; built, installed and exercised on a real machine | #16, #17, #28 |
+| L Linux controller | done | #11, #24 |
+| 8 supply chain | done (pins, cargo-deny, vendored forks, Flutter lock); crate trimming deliberately not done | #19, #20, #21, #22 |
+| 9 build and release | Linux: scripted, reproducible (byte-identical across directories, shipped profile); Windows: scripted; signing decision pending | #23, #24, #18 |
+| 10 server | built from a pinned commit with patches; sandbox directives exercised; egress and soak pass; not yet on a real systemd host | #25 |
+| 11 acceptance | partly done, see 2h | #26, #27 |
+
 
 ### Phase 0: Prerequisites and baseline (no code changes) 
 **Status: DONE 2026-10-04** (toolchain installed with your approval; results in §2a and §9: baseline builds, baseline egress measured, interop answered, audit run). Remaining Phase 0 leftovers moved to Phase 11: `--cm`/`--tray` isolation, 24 h server soak.
