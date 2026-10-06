@@ -56,7 +56,7 @@ BUNDLE=flutter/build/linux/x64/release/bundle
 echo "== vendor-host scan"
 HITS=0
 for f in "$BUNDLE"/handover "$BUNDLE"/lib/librustdesk.so; do
-  if strings -a "$f" | grep -aE 'api\.rustdesk|admin\.rustdesk|rs-ny\.|rs-sg\.|rs-cn\.|stun\.l\.google|stun\.cloudflare|stun\.antisip|stun\.nextcloud|nip\.io|api\.telegram'; then
+  if strings -a "$f" | grep -aE 'rustdesk\.(com|cn)|rs-ny\.|rs-sg\.|rs-cn\.|stun\.l\.google|stun\.cloudflare|stun\.antisip|stun\.nextcloud|nip\.io|telegram\.org'; then
     HITS=1
   fi
 done
