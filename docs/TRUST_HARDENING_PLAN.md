@@ -231,6 +231,13 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 * **Trimmed build (#22)**: installed in service mode, one attended session accepted by a click; Windows Filtering Platform audit (`tools/egress-windows.ps1`) recorded 8 events, all to the configured server's ports (UDP/TCP 21116, TCP 21115, TCP 21117); no vendor or third-party DNS names; audit policy restored. Full uninstall left nothing behind (`w_left` check).
 * **Keyboard check**: the first attempt was polluted by a runaway `7` that continued with Handover completely stopped, i.e. a key physically held on the test machine. Repeated with the lid closed (virtual display, nobody can touch the keyboard): from the controller `handover 123` arrived in Notepad, Shift+H gave `H`, two Backspaces deleted it and Shift+I gave `I` (map-mode keyboard, key down/up per key). A second attended session on the trimmed build, a second egress report: PASS (6 events, only the server's ports 21115-21117, no vendor DNS names), `connections.log` shows connection, authorised, close; uninstall left nothing behind; audit policy restored.
 
+### 2j. Packet-level egress capture and an analyzer gap (Linux, 2026-10-06)
+
+* **Gap found and fixed:** `tools/egress-analyze.py` only counted `connect()` destinations. UDP `sendto()`/`sendmsg()` targets (multicast, broadcast, connectionless UDP) were never counted, so the earlier "PASS" results rested on `connect()` alone. The regexes now match every socket address in the trace; the deliberate-leak self-test (`tools/egress-check.sh selftest`) reports the TCP connect, the multicast send and the UDP send.
+* **Packet capture added (closes the "tcpdump-level" open item for the namespace runs):** the offline namespace now has a fake uplink (a dummy interface with IPv4 and IPv6 default routes and permanent neighbour entries). `connect()` therefore succeeds, and every packet that would have left the machine, by any syscall, is captured with `tcpdump` and must be empty (kernel IPv6 neighbour/router/MLD messages are ignored). The self-test produces 6 captured packets (SYN retries, multicast, UDP) and fails as it should.
+* **Re-measured with the fixed analyzer and the capture** (60 s each, release controller bundle, patched servers): `server`, `ui`, `down` and `wrongkey` PASS on both views; the only non-loopback destination is the throwaway server's address (allowed). Nothing reached the uplink.
+* The Windows egress report (Filtering Platform audit) was never affected by the analyzer gap: it records every allowed or blocked connection per process.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
