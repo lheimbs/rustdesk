@@ -219,11 +219,11 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 | Binary scan, Windows `handover.exe` + `librustdesk.dll` built from HEAD | **clean** (no vendor host, STUN, nip.io, Telegram, Sentry, Firebase strings) |
 | Binary scan, Linux release bundle built from HEAD with `tools/build-linux.sh` | **clean** (the script fails the build on `rustdesk.com/.cn`, vendor servers, STUN, nip.io, telegram.org). Remaining "Telegram" strings are translation labels and a stubbed struct name, no host |
 | UI crawl (controller: settings General/Network/Display/About, ID menu, toolbar menus) with `strace -e connect,execve` | no connection, no link opener or browser executed; settings have no Account/Security pages. Findings: Network still offers "Allow insecure TLS fallback" and "Use WebSocket" toggles (user options, not defaults); the app polls `loginctl` ~200 times in a few minutes (upstream behaviour, wasteful, harmless) |
-| Reproducible build | the same commit built in two different directories gives a **byte-identical** `liblibrustdesk.so` with the shipped fat-LTO profile (SHA-256 `d2147122...c7d6`) and with LTO off; the build script bind-mounts the checkout at `/mnt` and fixes the build date. Not compared: the Flutter bundle/tarball, Windows build |
+| Reproducible build | the same commit built in two different directories gives a **byte-identical** `liblibrustdesk.so` with the shipped fat-LTO profile (SHA-256 `d2147122...c7d6`) and with LTO off; the build script bind-mounts the checkout at `/mnt` and fixes the build date. Windows: see 2k. Not compared: the Flutter tarball |
 | Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
 | `connections.log` | verified on the real machine (2f) |
 
-**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen/UAC behaviour; a session surviving a service restart; tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); the Windows build's reproducibility; running the server units under a real system systemd; Smart App Control machines (signing decision #18).
+**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen/UAC behaviour; a session surviving a service restart; tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); running the server units under a real system systemd; Smart App Control machines (signing decision #18).
 
 ### 2i. Trimmed Windows build and signing pipeline (test machine, 2026-10-06)
 
@@ -237,6 +237,16 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 * **Packet capture added (closes the "tcpdump-level" open item for the namespace runs):** the offline namespace now has a fake uplink (a dummy interface with IPv4 and IPv6 default routes and permanent neighbour entries). `connect()` therefore succeeds, and every packet that would have left the machine, by any syscall, is captured with `tcpdump` and must be empty (kernel IPv6 neighbour/router/MLD messages are ignored). The self-test produces 6 captured packets (SYN retries, multicast, UDP) and fails as it should.
 * **Re-measured with the fixed analyzer and the capture** (60 s each, release controller bundle, patched servers): `server`, `ui`, `down` and `wrongkey` PASS on both views; the only non-loopback destination is the throwaway server's address (allowed). Nothing reached the uplink.
 * The Windows egress report (Filtering Platform audit) was never affected by the analyzer gap: it records every allowed or blocked connection per process.
+
+### 2k. Windows build reproducibility (test machine, 2026-10-06)
+
+Method: build the same commit several times on the Windows build host (fresh directories, one with a cached target) and compare SHA-256 of every file of the bundle plus `librustdesk.dll` and `handover-install.exe` (92 files).
+
+* **First attempt** (fixed drive letter via `subst`, `/Brepro`, fixed build date, sorted packer input): 89 of 92 files identical, including `handover.exe`; only `librustdesk.dll` and the installer differed. The DLL differed only by the embedded build-date string (my second build used a newer commit time as its epoch; a third build with the same epoch gave a bit-identical DLL) and by hash bytes that follow from it.
+* **Two real causes found in the installer** (the only file still different with equal epochs): the packer stamped the pack with the current time (`libs/portable/generate.py`), and `winres` wrote the VERSIONINFO fields in `HashMap` order, which is random per process. Fixed: the stamp comes from `SOURCE_DATE_EPOCH`, files are packed in sorted order, and `libs/winres` is winres 0.1.12 with sorted output (`[patch.crates-io]`).
+* **Result after the fixes:** an incremental build and a fresh build in a different directory, same epoch, are **bit-identical in all 92 files, installer included** (installer SHA-256 `5690a100...57cb`).
+* **Conditions:** same toolchain and host image, the vcpkg-built static libraries (`C:\dev\vcpkg_installed`) shared between the builds (their own reproducibility is not tested), unsigned output (a signature carries a signing time or certificate and is applied afterwards), and a fixed epoch: pass `-SourceDateEpoch` or let it default to the commit time. A different checkout path is neutralised by the `subst` drive.
+* Not covered: building on a second Windows machine, other Visual Studio versions.
 
 ## 3. Design decisions
 
