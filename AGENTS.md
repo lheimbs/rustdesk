@@ -161,6 +161,31 @@ no record of who connected (`8d2e48606`).
    mode + service, attended-only) and Linux Wayland controller (outgoing-only). Keep the AGPL notice
    and source-offer. See `docs/TRUST_HARDENING_PLAN.md` Phases 7, W and L.
 
+### Documentation rules (tickets are the memory)
+
+A new session may start with an empty context. Everything needed to continue must therefore already be written down, in the right place:
+
+1. **GitHub issues are the system of record.** The epic (#32) holds the status and the resume pointers; each story issue holds what was decided, found, measured and
+   changed, with the commit hash. The runbook issue (#33) holds the generic build/test procedures and gotchas. In the *same turn* you do any of: finish or change work,
+   make or learn a decision, measure something, hit a gotcha, find a bug, or change a procedure - add it to the right issue (comment, or edit the runbook/epic body) and
+   keep the `status:` label true. Evidence tables and long write-ups go into `docs/TRUST_HARDENING_PLAN.md` (sections 2a-2h, the phase table in section 4). Do not rely on
+   chat history or on scratch directories: they are gone next session.
+2. **No personal information in anything that is pushed or posted**: code, docs, commit messages, issue bodies and comments, labels. Personal means anything specific to the
+   maintainer's setup: host names and overlay-network names, private/overlay IP addresses, user names, e-mail addresses (except the git author identity and the public app id/organisation
+   name), machine models, home-directory paths, tokens and keys, screenshots of private desktops. Write procedures with placeholders (`<test-laptop>`, `<server-ip>`, `<user>`) and say
+   "see the local knowledge base" when the real values matter.
+3. **Local knowledge base in the git-ignored `kb/` folder** for everything that needs those details: how to reach and drive the test machines, working scripts, environment quirks,
+   decisions the owner made that are not in the repo. Start with `kb/README.md` (index). Write or update an article in the same turn you learn something personal-specific; keep
+   reusable scripts in `kb/scripts/` (they load `kb/scripts/env.sh`) so they survive the ephemeral scratch directory. `kb/` is never committed, never copied into tickets.
+   If `kb/` does not exist (fresh clone), do not guess: ask the maintainer for the environment details and then recreate it.
+4. **Scrub before you publish.** Run `kb/scripts/scrub-check.sh` before every push and after writing ticket text (it checks the branch diff, commit messages and all issue text for
+   the personal patterns in `kb/scrub-patterns.txt` and for generic ones). Without `kb/`, at least grep the diff for private IP ranges (`10.`, `172.16-31.`, `192.168.`, `100.64-127.`),
+   `/home/<name>/`, e-mail addresses, `github_pat_`/`ghp_` tokens and private keys. If something leaked: remove it from the tree **and** from history (the branch is unreviewed and
+   single-author, so rewriting it is acceptable; back up first, rewrite, verify every commit, update the issue text, delete the backup) - never leave it "fixed in a later commit".
+5. **Start and end of every session**: start by reading AGENTS.md, the epic, the open stories and `kb/README.md`; end by making sure the tickets, the plan and the kb reflect the
+   final state, the work is committed and pushed (token via `kb/scripts/github/gh-push.sh`), and every test machine and process you touched is back to its original state.
+6. Secrets: the GitHub token lives only in `.env` (git-ignored). Never print it, put it on a command line, store it in git config, or write it into the kb.
+
 ### Rules for agents working in this fork
 
 * **No new outbound endpoints.** Any new URL, hostname or IP literal in code needs an explicit
