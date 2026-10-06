@@ -8,8 +8,8 @@ the exit status is 1 if any of them is not covered by --allow (an IP, optionally
 """
 import argparse, re, sys
 
-INET = re.compile(r'(?:connect|sendto)\(\d+, \{sa_family=AF_INET, sin_port=htons\((\d+)\), sin_addr=inet_addr\("([^"]+)"\)')
-INET6 = re.compile(r'(?:connect|sendto)\(\d+, \{sa_family=AF_INET6, sin6_port=htons\((\d+)\), sin6_flowinfo=[^,]*, inet_pton\(AF_INET6, "([^"]+)"')
+INET = re.compile(r'\{sa_family=AF_INET, sin_port=htons\((\d+)\), sin_addr=inet_addr\("([^"]+)"\)')
+INET6 = re.compile(r'\{sa_family=AF_INET6, sin6_port=htons\((\d+)\), sin6_flowinfo=[^,]*, inet_pton\(AF_INET6, "([^"]+)"')
 NAME = re.compile(r'\\"name\\":\\"([^\\"]+)')
 DNS_SEND = re.compile(r'sendto\(\d+, "(?:[^"]|\\")*", \d+, [^,]*, \{sa_family=AF_INET6?, sin6?_port=htons\(53\)')
 
@@ -27,8 +27,7 @@ def main():
     dests, names, dns53 = {}, {}, 0
     for line in open(a.log, errors="replace"):
         for rx in (INET, INET6):
-            m = rx.search(line)
-            if m:
+            for m in rx.finditer(line):
                 port, ip = m.group(1), m.group(2)
                 if not is_loopback(ip) and port != "0":
                     dests[(ip, port)] = dests.get((ip, port), 0) + 1
