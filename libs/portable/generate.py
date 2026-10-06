@@ -29,9 +29,10 @@ def generate_md5_table(folder: str, level, exclude: str = None) -> dict:
     # os.curdir is the literal ".", so restoring it left us inside `folder`.
     curdir = os.getcwd()
     os.chdir(folder)
-    for root, _, files in os.walk('.'):
+    for root, dirs, files in os.walk('.'):
+        dirs.sort()
         # remove ./
-        for f in files:
+        for f in sorted(files):
             md5_generator = md5()
             full_path = os.path.join(root, f)
             if skip and normalize(full_path) == skip:
@@ -81,7 +82,7 @@ def write_blob(md5_table: dict, output_path: str, exe: str):
 def write_app_metadata(output_folder: str):
     output_path = os.path.join(output_folder, "app_metadata.toml")
     with open(output_path, "w") as f:
-        f.write(f"timestamp = {int(datetime.datetime.now().timestamp() * 1000)}\n")
+        f.write(f"timestamp = {int(float(os.environ['SOURCE_DATE_EPOCH']) * 1000) if os.environ.get('SOURCE_DATE_EPOCH') else int(datetime.datetime.now().timestamp() * 1000)}\n")
     print(f"App metadata has been written to {output_path}")
 
 def build_portable(output_folder: str, target: str):

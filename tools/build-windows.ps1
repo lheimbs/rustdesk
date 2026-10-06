@@ -20,11 +20,28 @@ param(
   [switch]$Sign,                # sign the app files and the installer (see tools/sign-windows.ps1)
   [string]$SignThumbprint,
   [string]$SignSubject = 'CN=Handover',
-  [switch]$SignCreate           # create a NEW self-signed certificate when none exists (test use)
+  [switch]$SignCreate,          # create a NEW self-signed certificate when none exists (test use)
+  [string]$SourceDateEpoch,     # build date for reproducible builds (default: the commit time, or SOURCE_DATE_EPOCH)
+  [string]$Drive = 'R:',        # drive letter the checkout is mapped to, so absolute paths in the binaries are fixed
+  [switch]$NoSubst              # build in place (the result then depends on where the checkout is)
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
+
+# Reproducibility: native code embeds absolute paths that no compiler flag can fully remap, so the checkout is
+# mapped to a fixed drive letter and built from there (the same idea as the /mnt bind mount in build-linux.sh).
+if (-not $NoSubst -and -not $env:HANDOVER_IN_SUBST) {
+  if (Test-Path "$Drive\") { throw "$Drive is already in use: pass -Drive <letter>: or -NoSubst" }
+  subst $Drive $repo
+  if ($LASTEXITCODE -ne 0) { throw "subst $Drive failed" }
+  $env:HANDOVER_IN_SUBST = '1'
+  try {
+    $fwd = @($PSBoundParameters.GetEnumerator() | ForEach-Object { if ($_.Value -is [switch]) { if ($_.Value) { "-$($_.Key)" } } else { "-$($_.Key)"; "$($_.Value)" } })
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$Drive\tools\build-windows.ps1" @fwd
+    exit $LASTEXITCODE
+  } finally { subst $Drive /d | Out-Null }
+}
 
 $dotenv = @{}
 if (Test-Path .env) {
@@ -44,6 +61,13 @@ $env:VCPKG_ROOT = $VcpkgRoot
 $env:VCPKG_INSTALLED_ROOT = $VcpkgInstalled
 $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
 $env:VCPKG_DISABLE_METRICS = '1'
+if (-not $SourceDateEpoch) { $SourceDateEpoch = $env:SOURCE_DATE_EPOCH }
+if (-not $SourceDateEpoch) { $SourceDateEpoch = (& git log -1 --format=%ct 2>$null) }
+if ($SourceDateEpoch) { $env:SOURCE_DATE_EPOCH = "$SourceDateEpoch" }
+else { Write-Warning 'no SOURCE_DATE_EPOCH and no git history: the build date will differ between builds' }
+# /Brepro: no timestamps in PE headers; the linker honours the LINK environment variable for every link step
+$env:LINK = '/Brepro'
+$env:RUSTFLAGS = "$env:RUSTFLAGS -C link-arg=/Brepro --remap-path-prefix=$env:USERPROFILE\.cargo=/cargo --remap-path-prefix=$env:USERPROFILE\.rustup=/rustup"
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\Program Files\LLVM\bin;C:\Program Files\NASM;C:\Program Files\Git\cmd;C:\Program Files\Python312;$FlutterBin;$env:PATH"
 
 if (-not (Test-Path "$VcpkgRoot\installed")) {
