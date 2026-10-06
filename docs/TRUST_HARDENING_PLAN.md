@@ -193,6 +193,20 @@ Explained: while a session is active the laptop's own Handover main window turns
 
 Not exercised: file transfer end to end, Windows lock/UAC screens, switching sides, a session surviving a service restart, the 24 h soak.
 
+### 2g. Third laptop session: file transfer, live tunnel refusal, Windows egress tool (2026-10-06)
+
+Same setup as 2f. **[measured]**
+
+| Check | Result |
+|---|---|
+| File transfer needs its own consent | opening "Transfer file" starts a second connection; the laptop shows a second accept prompt ("Datei uebertragen") and nothing moves until it is clicked (attended design holds per connection) |
+| Controller -> laptop upload | finished; the file on the laptop is byte-identical (same SHA-256) |
+| Laptop -> controller download | finished; content identical |
+| TCP tunneling | **refused** by the laptop: "Login error: No permission of IP tunneling" (the dialog appears when something uses the forwarder; with terminal and camera from 2f, all three dangerous session types are now confirmed refused live) |
+| `tools/egress-windows.ps1` (new) | `-Start` / `-Report -Allow <server> -Restore` over the whole session: 10 connections of `handover.exe`, all to the own hbbs/hbbr, 0 blocked, no vendor names in the DNS cache, audit policy restored; verdict PASS |
+
+Notes: file transfer exposes everything the logged-in user can read (the listing starts in the user's home folder, including hidden folders); that is the consent given by clicking Accept for that connection, and it is why the per-connection prompt matters. Not exercised: a hostile peer sending unsafe file names (covered by unit tests), Windows lock/UAC screens, session survival across a service restart, the 24 h soak.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
