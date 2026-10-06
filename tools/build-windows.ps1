@@ -16,7 +16,11 @@ param(
   [string]$Key,
   [string]$VcpkgRoot = 'C:\dev\vcpkg',
   [string]$VcpkgInstalled = 'C:\dev\vcpkg_installed',
-  [string]$FlutterBin = 'C:\dev\flutter\bin'
+  [string]$FlutterBin = 'C:\dev\flutter\bin',
+  [switch]$Sign,                # sign the app files and the installer (see tools/sign-windows.ps1)
+  [string]$SignThumbprint,
+  [string]$SignSubject = 'CN=Handover',
+  [switch]$SignCreate           # create a NEW self-signed certificate when none exists (test use)
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -61,10 +65,19 @@ Pop-Location
 
 $bundle = 'flutter\build\windows\x64\runner\Release'
 if (-not (Test-Path "$bundle\handover.exe")) { throw "missing $bundle\handover.exe" }
+$signArgs = @{ Subject = $SignSubject }
+if ($SignThumbprint) { $signArgs.Thumbprint = $SignThumbprint }
+if ($SignCreate) { $signArgs.Create = $true }
+if ($Sign) {
+  # The installer embeds these files, so they are signed before packing and the installer after.
+  $inner = Get-ChildItem $bundle -Recurse -Include *.exe, *.dll | ForEach-Object { $_.FullName }
+  & "$PSScriptRoot\sign-windows.ps1" -Files $inner @signArgs
+}
 Push-Location libs\portable
 python -m pip install -r requirements.txt
 Invoke-InVsEnv "python generate.py -f ..\..\$bundle -o . -e ..\..\$bundle\handover.exe"
 Pop-Location
 Copy-Item -Force target\release\rustdesk-portable-packer.exe handover-install.exe
+if ($Sign) { & "$PSScriptRoot\sign-windows.ps1" -Files (Resolve-Path handover-install.exe).Path @signArgs }
 Get-FileHash handover-install.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  handover-install.exe" } | Tee-Object SHA256SUMS.txt
 Write-Host "built handover-install.exe"
