@@ -48,7 +48,10 @@ fi
 echo "== Rust library (release, --locked)"
 cargo build --locked --release --features flutter,linux-pkg-config --lib
 echo "== Flutter bundle (release, --enforce-lockfile)"
-(cd flutter && flutter pub get --enforce-lockfile && flutter build linux --release)
+(cd flutter && flutter pub get --enforce-lockfile)
+# The first build in a fresh tree can compile the plugins before Flutter has generated its headers
+# (empty ephemeral/flutter_linux); the second run succeeds, so retry once.
+(cd flutter && { flutter build linux --release || { echo "retrying the Flutter build once"; flutter build linux --release; }; })
 
 BUNDLE=flutter/build/linux/x64/release/bundle
 [ -x "$BUNDLE/handover" ] || { echo "bundle not produced: $BUNDLE/handover" >&2; exit 1; }
