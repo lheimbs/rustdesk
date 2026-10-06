@@ -45,6 +45,10 @@ files, and `hbbs` answered a real controller (key exchange + database lookup) wi
 and root: `User=`/`Group=`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths=/var/lib/handover-server` and `IPAddressDeny`/`IPAddressAllow`. Check
 `journalctl -u handover-hbbs` after the first real start.
 
+`sudo server/test-system-units.sh <dir with hbbs and hbbr>` runs exactly these missing parts for real under test names (own user, `/var/lib/handover-server-test`,
+units `handover-test-*`), checks the user, key permissions, `ProtectHome`/`ProtectSystem`, empty capabilities and that a connection from a non-allowed
+source address is dropped by the IP filter, and removes everything again on exit.
+
 ## Ports
 
 | Port | Service | Notes |
