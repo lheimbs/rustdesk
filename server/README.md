@@ -38,8 +38,12 @@ systemctl enable --now handover-hbbs handover-hbbr
 cat /var/lib/handover-server/id_ed25519.pub         # put this in .env as HANDOVER_SERVER_KEY, then build the clients
 ```
 
-Both units are verified with `systemd-analyze` only (exposure 1.6); they have not been run under
-systemd in the test lab, so check `journalctl -u handover-hbbs` after the first start.
+Both units score 1.5 (OK) on `systemd-analyze security`. Their sandbox directives were also run for real as transient services
+in a user manager (20 properties each: syscall filter `@system-service`, `MemoryDenyWriteExecute`, dropped capabilities, address-family and
+namespace restrictions, kernel/clock/hostname protections, `UMask=0077`): both stayed up, listened on 21115-21119, created their key and database
+files, and `hbbs` answered a real controller (key exchange + database lookup) with no seccomp kills. Not covered, because they need a system manager
+and root: `User=`/`Group=`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths=/var/lib/handover-server` and `IPAddressDeny`/`IPAddressAllow`. Check
+`journalctl -u handover-hbbs` after the first real start.
 
 ## Ports
 
