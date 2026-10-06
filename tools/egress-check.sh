@@ -51,6 +51,7 @@ if [ "$MODE" = server ]; then
   kill \$HBBS \$HBBR 2>/dev/null; wait 2>/dev/null
   strace -f -qq -s 300 -e trace=connect,sendto,sendmsg -o "$WORK/strace.txt" \
     timeout $DUR bash -c "$SERVER_BIN/hbbs -k _ -r $SRV_IP:21117 >/dev/null 2>&1 & $SERVER_BIN/hbbr -k _ >/dev/null 2>&1 & wait"
+  echo \$? > "$WORK/rc"
 else
   KEY=\$(cat "$WORK/srv/id_ed25519.pub" 2>/dev/null || echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=)
   [ "$MODE" = wrongkey ] && KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
@@ -63,6 +64,7 @@ else
   export DISPLAY=:88 HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/home/.config" XDG_DATA_HOME="$WORK/home/.local/share" XDG_CACHE_HOME="$WORK/home/.cache" NO_AT_BRIDGE=1 GDK_BACKEND=x11
   strace -f -qq -s 300 -e trace=connect,sendto,sendmsg -o "$WORK/strace.txt" \
     timeout $DUR dbus-run-session -- "$BUNDLE" \$ARGS >"$WORK/app.log" 2>&1
+  echo \$? > "$WORK/rc"
   kill \$XVFB 2>/dev/null
 fi
 [ \$HBBS != 0 ] && kill \$HBBS 2>/dev/null
@@ -74,6 +76,11 @@ chmod +x "$WORK/inner.sh"
 echo "== egress check: mode=$MODE duration=${DUR}s (offline namespace, allow-list: loopback + $SRV_IP)"
 unshare -rn "$WORK/inner.sh"
 [ -s "$WORK/strace.txt" ] || { echo "no trace was produced (see $WORK)" >&2; KEEP=1; exit 2; }
+# `timeout` exits 124 when the process was still running at the end; anything else means it died early.
+if [ "$(cat "$WORK/rc" 2>/dev/null)" != 124 ]; then
+  echo "the process under test ended early (exit status $(cat "$WORK/rc" 2>/dev/null || echo unknown)), so this run is inconclusive (see $WORK)" >&2
+  KEEP=1; exit 2
+fi
 if [ "$MODE" != server ] && ! grep -q 'X11-unix/X88' "$WORK/strace.txt"; then
   echo "the app never connected to the test display, so this run proves nothing (see $WORK/app.log)" >&2
   KEEP=1; exit 2
