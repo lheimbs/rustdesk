@@ -223,7 +223,7 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 | Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
 | `connections.log` | verified on the real machine (2f) |
 
-**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen/UAC behaviour; a session surviving a service restart; tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); running the server units under a real system systemd; Smart App Control machines (signing decision #18).
+**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen behaviour (testing it needs the owner present: a locked test machine cannot be unlocked remotely); the UAC prompt was only partly tested (2l); tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); running the server units under a real system systemd; Smart App Control machines (signing decision #18).
 
 ### 2i. Trimmed Windows build and signing pipeline (test machine, 2026-10-06)
 
@@ -247,6 +247,12 @@ Method: build the same commit several times on the Windows build host (fresh dir
 * **Result after the fixes:** an incremental build and a fresh build in a different directory, same epoch, are **bit-identical in all 92 files, installer included** (installer SHA-256 `5690a100...57cb`).
 * **Conditions:** same toolchain and host image, the vcpkg-built static libraries (`C:\dev\vcpkg_installed`) shared between the builds (their own reproducibility is not tested), unsigned output (a signature carries a signing time or certificate and is applied afterwards), and a fixed epoch: pass `-SourceDateEpoch` or let it default to the commit time. A different checkout path is neutralised by the `subst` drive.
 * Not covered: building on a second Windows machine, other Visual Studio versions.
+
+### 2l. Service restart and UAC prompt on the Windows controlled side (2026-10-06)
+
+* **Service restart during an accepted session:** restarting the `Handover` service ends the session. The controller then reconnected by itself, and the controlled machine showed a **new Accept prompt**; nothing was accepted without a click, and declining ("Closed manually by the peer") worked. The one-time password had rotated. Known limit: the abruptly ended session has no `closed` line in `connections.log` (the process was killed before it could write one); the next connection starts a new line sequence.
+* **UAC consent prompt (secure desktop) during a session:** the controller *sees* the prompt (same as the local screen). Pointer events reach it (a click expanded the "details" link and the dialog moved), but I did **not** manage to press Yes or No from the controller in four attempts (button press and Enter did not close it). So in this build a remote peer could not be shown to approve an elevation itself; the person at the machine (or ending the requesting process) answers it. Not a guarantee: only these attempts were made; the prompt was cleaned up by ending the requesting process.
+* **Lock screen:** not tested. Locking the test machine without its credentials would strand it; it needs the owner present.
 
 ## 3. Design decisions
 
