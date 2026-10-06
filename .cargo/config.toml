@@ -115,11 +115,6 @@ git = "https://github.com/rustdesk-org/magnum-opus"
 rev = "588c6e1f9ed50c3a01fa64f3bd3e7cdb0378a114"
 replace-with = "handover-vendored-forks"
 
-[source."git+https://github.com/rustdesk-org/nokhwa.git?rev=c2f74662b6ce117f7f94301693fdfadc0b1ec91a"]
-git = "https://github.com/rustdesk-org/nokhwa.git"
-rev = "c2f74662b6ce117f7f94301693fdfadc0b1ec91a"
-replace-with = "handover-vendored-forks"
-
 [source."git+https://github.com/rustdesk-org/parity-tokio-ipc?rev=d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01"]
 git = "https://github.com/rustdesk-org/parity-tokio-ipc"
 rev = "d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01"
@@ -133,11 +128,6 @@ replace-with = "handover-vendored-forks"
 [source."git+https://github.com/rustdesk-org/rdev?rev=a361d86a8b0245f3618a9efb375c149530a6b599"]
 git = "https://github.com/rustdesk-org/rdev"
 rev = "a361d86a8b0245f3618a9efb375c149530a6b599"
-replace-with = "handover-vendored-forks"
-
-[source."git+https://github.com/rustdesk-org/rust-webm?rev=d2c4d3ac133c7b0e4c0f656da710b48391981e64"]
-git = "https://github.com/rustdesk-org/rust-webm"
-rev = "d2c4d3ac133c7b0e4c0f656da710b48391981e64"
 replace-with = "handover-vendored-forks"
 
 [source."git+https://github.com/rustdesk-org/sysinfo?rev=90b1705d909a4902dbbbdea37ee64db17841077d"]
