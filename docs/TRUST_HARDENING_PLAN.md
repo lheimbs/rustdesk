@@ -223,7 +223,7 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 | Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
 | `connections.log` | verified on the real machine (2f) |
 
-**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen behaviour (testing it needs the owner present: a locked test machine cannot be unlocked remotely); the UAC prompt was only partly tested (2l); tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); running the server units under a real system systemd; Smart App Control machines (signing decision #18).
+**Not done (stated, not hidden):** a 24 h server soak (30 min each run here); Windows lock-screen behaviour (testing it needs the owner present: a locked test machine cannot be unlocked remotely); the UAC prompt was only partly tested (2l); tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); Smart App Control machines (signing decision #18).
 
 ### 2i. Trimmed Windows build and signing pipeline (test machine, 2026-10-06)
 
@@ -253,6 +253,10 @@ Method: build the same commit several times on the Windows build host (fresh dir
 * **Service restart during an accepted session:** restarting the `Handover` service ends the session. The controller then reconnected by itself, and the controlled machine showed a **new Accept prompt**; nothing was accepted without a click, and declining ("Closed manually by the peer") worked. The one-time password had rotated. Known limit: the abruptly ended session has no `closed` line in `connections.log` (the process was killed before it could write one); the next connection starts a new line sequence.
 * **UAC consent prompt (secure desktop) during a session:** the controller *sees* the prompt (same as the local screen). Pointer events reach it (a click expanded the "details" link and the dialog moved), but I did **not** manage to press Yes or No from the controller in four attempts (button press and Enter did not close it). So in this build a remote peer could not be shown to approve an elevation itself; the person at the machine (or ending the requesting process) answers it. Not a guarantee: only these attempts were made; the prompt was cleaned up by ending the requesting process.
 * **Lock screen:** not tested. Locking the test machine without its credentials would strand it; it needs the owner present.
+
+### 2m. Server units under a real system manager (2026-10-07)
+
+`server/test-system-units.sh` (root) installed the shipped units under test names and ran them as a dedicated user: **16 of 16 checks passed**. Both units active; `hbbs` runs as the dedicated user; key created with mode 600 and owned by it; a loopback source is allowed and a connection from the host's own non-loopback address is dropped by `IPAddressDeny=any` + `IPAddressAllow` (this was not effective in a user manager, so it could not be verified before); `ProtectHome` and `ProtectSystem=strict` effective for both programs; own mount namespace; no effective capabilities; no seccomp kills or permission errors in the journal. Everything was removed again (user, units, state directory, binary copy). The production unit differs only in names, paths and the allow-list taken from the deployment settings.
 
 ## 3. Design decisions
 

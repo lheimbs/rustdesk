@@ -41,9 +41,9 @@ cat /var/lib/handover-server/id_ed25519.pub         # put this in .env as HANDOV
 Both units score 1.5 (OK) on `systemd-analyze security`. Their sandbox directives were also run for real as transient services
 in a user manager (20 properties each: syscall filter `@system-service`, `MemoryDenyWriteExecute`, dropped capabilities, address-family and
 namespace restrictions, kernel/clock/hostname protections, `UMask=0077`): both stayed up, listened on 21115-21119, created their key and database
-files, and `hbbs` answered a real controller (key exchange + database lookup) with no seccomp kills. Not covered, because they need a system manager
-and root: `User=`/`Group=`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths=/var/lib/handover-server` and `IPAddressDeny`/`IPAddressAllow`. Check
-`journalctl -u handover-hbbs` after the first real start.
+files, and `hbbs` answered a real controller (key exchange + database lookup) with no seccomp kills. The parts that need a system manager and root (`User=`/`Group=`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `IPAddressDeny`/`IPAddressAllow`) are covered by the script below. Check `journalctl -u handover-hbbs` after the first real start.
+
+**Result of the run on 2026-10-07 (systemd, a dedicated user): 16 of 16 checks PASS** - units active, `hbbs` runs as the dedicated user, key created with mode 600 and owned by it, loopback allowed, a connection from a non-allowed source address dropped by the IP filter, `ProtectHome` and `ProtectSystem=strict` effective, own mount namespace, no effective capabilities, no seccomp kills in the journal; everything was removed again.
 
 `sudo server/test-system-units.sh <dir with hbbs and hbbr>` runs exactly these missing parts for real under test names (own user, `/var/lib/handover-server-test`,
 units `handover-test-*`), checks the user, key permissions, `ProtectHome`/`ProtectSystem`, empty capabilities and that a connection from a non-allowed
