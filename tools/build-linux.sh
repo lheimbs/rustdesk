@@ -39,7 +39,8 @@ done
 pkg-config --exists libyuv || { echo "libyuv.pc not found (see the header of this script)" >&2; exit 2; }
 FLUTTER_BIN=$(mise where flutter@3.24.5 2>/dev/null)/bin
 [ -x "$FLUTTER_BIN/flutter" ] && export PATH=$FLUTTER_BIN:$PATH
-flutter --version 2>/dev/null | head -1 | grep -q "3.24.5" || { echo "Flutter 3.24.5 is required" >&2; exit 2; }
+FLUTTER_VERSION=$(flutter --version 2>/dev/null || true)  # not piped into head: with pipefail an early-closing reader makes flutter fail
+case "$FLUTTER_VERSION" in "Flutter 3.24.5"*) ;; *) echo "Flutter 3.24.5 is required" >&2; exit 2 ;; esac
 
 if [ ! -f src/bridge_generated.rs ] || [ ! -f flutter/lib/generated_bridge.dart ]; then
   tools/gen-bridge.sh
