@@ -1068,16 +1068,8 @@ pub fn get_api_server(_api: String, _custom: String) -> String {
 }
 
 #[inline]
-pub fn is_public(url: &str) -> bool {
-    let parsed = url::Url::parse(url)
-        .ok()
-        .filter(|parsed| parsed.has_host())
-        .or_else(|| url::Url::parse(&format!("http://{url}")).ok());
-    let Some(host) = parsed.as_ref().and_then(url::Url::host_str) else {
-        return false;
-    };
-    let host = host.strip_suffix('.').unwrap_or(host);
-    host == "rustdesk.com" || host.ends_with(".rustdesk.com")
+pub fn is_public(_url: &str) -> bool {
+    false
 }
 
 pub fn get_tcp_punch_enabled() -> bool {
@@ -2287,31 +2279,6 @@ mod tests {
             Duration::from_secs_f64(dur.as_secs_f64() * 0.499 * 1e-9),
             Duration::from_nanos(0)
         );
-    }
-
-    #[test]
-    fn test_is_public() {
-        // Test URLs containing "rustdesk.com/"
-        assert!(is_public("https://rustdesk.com/"));
-        assert!(is_public("https://www.rustdesk.com/"));
-        assert!(is_public("https://api.rustdesk.com/v1"));
-        assert!(is_public("https://API.RUSTDESK.COM/v1"));
-        assert!(is_public("https://rustdesk.com/path"));
-
-        // Test URLs ending with "rustdesk.com"
-        assert!(is_public("rustdesk.com"));
-        assert!(is_public("https://rustdesk.com"));
-        assert!(is_public("https://RustDesk.com"));
-        assert!(is_public("http://www.rustdesk.com"));
-        assert!(is_public("https://api.rustdesk.com"));
-
-        // Test non-public URLs
-        assert!(!is_public("https://example.com"));
-        assert!(!is_public("https://custom-server.com"));
-        assert!(!is_public("http://192.168.1.1"));
-        assert!(!is_public("localhost"));
-        assert!(!is_public("https://rustdesk.computer.com"));
-        assert!(!is_public("rustdesk.comhello.com"));
     }
 
     #[test]
