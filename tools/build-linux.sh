@@ -67,5 +67,5 @@ done
 echo "none found"
 
 mkdir -p "$OUT"
-tar -C "$(dirname "$BUNDLE")" -czf "$OUT/handover-linux-x64.tar.gz" bundle
+tar -C "$(dirname "$BUNDLE")" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -cf - bundle | gzip -n > "$OUT/handover-linux-x64.tar.gz"
 (cd "$OUT" && sha256sum handover-linux-x64.tar.gz | tee SHA256SUMS)
