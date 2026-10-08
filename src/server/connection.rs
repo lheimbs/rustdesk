@@ -28,14 +28,10 @@ use cidr_utils::cidr::IpCidr;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
-    config::{
-        self, decode_permanent_password_h1_from_storage, decode_preset_password_h1_from_storage,
-        local_permanent_password_storage_is_usable_for_auth,
-        preset_permanent_password_storage_is_usable_for_auth, Config, TrustedDevice,
-    },
+    config::{self, Config, TrustedDevice},
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
-    password_security::{self as password, ApproveMode},
+    password_security as password,
     sha2::{Digest, Sha256},
     sleep, timeout,
     tokio::{
@@ -2485,31 +2481,6 @@ impl Connection {
         self.verify_h1(&h1_plain[..])
     }
 
-    fn validate_password_storage(&self, storage: &str) -> bool {
-        if storage.is_empty() {
-            return false;
-        }
-
-        // Use strict decode success to detect hashed storage.
-        // If decode fails, treat as legacy plaintext storage for compatibility.
-        if let Some(h1) = decode_permanent_password_h1_from_storage(storage) {
-            return self.verify_h1(&h1[..]);
-        }
-
-        // Legacy plaintext storage path.
-        self.validate_password_plain(storage)
-    }
-
-    fn validate_preset_password_storage(&self, storage: &str, salt: &str) -> bool {
-        if salt.is_empty() {
-            return self.validate_password_plain(storage);
-        }
-        let Some(h1) = decode_preset_password_h1_from_storage(storage) else {
-            return false;
-        };
-        self.verify_h1(&h1[..])
-    }
-
     // This is coarse brute-force protection for the current temporary password value.
     // We only care whether the active temporary password itself was presented correctly,
     // not whether later authorization steps succeed. A successful temporary-password
@@ -2562,48 +2533,56 @@ impl Connection {
         state.failures = 0;
     }
 
-    fn validate_password(&mut self, allow_permanent_password: bool) -> bool {
-        if password::temporary_enabled() {
-            let password = password::temporary_password();
-            if self.validate_password_plain(&password) {
-                self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::TemporaryPassword);
-                raii::AuthedConnID::update_or_insert_session(
-                    self.session_key(),
-                    Some(password),
-                    Some(false),
-                );
-                self.check_update_temporary_password(true);
+    /// Handover login policy (`login_gate`): a correct one-time password raises the Accept prompt, the click
+    /// authorises. A wrong or missing password never reaches the connection manager.
+    async fn password_then_click(&mut self) -> bool {
+        use super::login_gate::{decide, Gate};
+        let password_exists = !password::temporary_password().is_empty();
+        let supplied_is_empty = self.lr.password.is_empty();
+        let mut failure = None;
+        if password_exists && !supplied_is_empty {
+            let (f, allowed) = self.check_failure(0).await;
+            if !allowed {
                 return true;
             }
+            failure = Some(f);
         }
-        if password::permanent_enabled() || allow_permanent_password {
-            let print_fallback = || {
-                if allow_permanent_password && !password::permanent_enabled() {
-                    log::info!("Permanent password accepted via logon-screen fallback");
-                }
-            };
-            // Strictly check storage usability before auth so malformed encrypted/hash storage
-            // cannot fall back to being accepted as legacy plaintext.
-            let (local_storage, local_salt) =
-                Config::get_local_permanent_password_storage_and_salt();
-            if !local_storage.is_empty() {
-                if local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt)
-                    && self.validate_password_storage(&local_storage)
-                {
-                    self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::PermanentPassword);
-                    print_fallback();
-                    return true;
-                }
-            } else {
-                let (hard, salt) = Config::get_preset_password_storage_and_salt();
-                if preset_permanent_password_storage_is_usable_for_auth(&hard, &salt)
-                    && self.validate_preset_password_storage(&hard, &salt)
-                {
-                    self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::PermanentPassword);
-                    print_fallback();
-                    return true;
-                }
+        let supplied_is_correct = failure.is_some() && self.validate_temporary_password();
+        match decide(password_exists, supplied_is_empty, supplied_is_correct) {
+            Gate::NoPasswordAccess => {
+                self.send_login_error("The remote side has no password to accept")
+                    .await;
             }
+            Gate::EmptyPassword => {
+                self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_EMPTY)
+                    .await;
+            }
+            Gate::WrongPassword => {
+                if let Some(f) = failure {
+                    self.update_failure_with_scope(f, false, 0, FailureScope::Default);
+                }
+                self.check_update_temporary_password(false);
+                self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
+                    .await;
+            }
+            Gate::Prompt => {
+                if let Some(f) = failure {
+                    self.update_failure_with_scope(f, true, 0, FailureScope::Default);
+                }
+                self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), false);
+            }
+        }
+        true
+    }
+
+    // Only the current one-time password counts here; it is not remembered as a "recent session",
+    // so a later connection always needs the password and the click again.
+    fn validate_temporary_password(&mut self) -> bool {
+        let password = password::temporary_password();
+        if self.validate_password_plain(&password) {
+            self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::TemporaryPassword);
+            self.check_update_temporary_password(true);
+            return true;
         }
         false
     }
@@ -2999,81 +2978,8 @@ impl Connection {
                 self.try_start_cm_ipc();
             }
 
-            // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
-            // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
-            // `is_logon_ui()` is a fallback for logon UI detection on Windows.
-            #[cfg(target_os = "windows")]
-            let is_logon = || {
-                crate::platform::is_prelogin() || crate::platform::is_locked() || {
-                    match crate::platform::is_logon_ui() {
-                        Ok(result) => result,
-                        Err(e) => {
-                            log::error!("Failed to detect logon UI: {:?}", e);
-                            false
-                        }
-                    }
-                }
-            };
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            let is_logon = || crate::platform::is_prelogin();
-
-            let allow_logon_screen_password =
-                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon();
-
-            if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
-            {
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                    if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await
-                    {
-                        return keep_alive;
-                    }
-                }
-                self.try_start_cm(lr.my_id, lr.my_name, false);
-                if hbb_common::get_version_number(&lr.version)
-                    >= hbb_common::get_version_number("1.2.0")
-                {
-                    self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
-                        .await;
-                }
-                return true;
-            } else if self.is_recent_session(false) {
-                if !self.send_logon_response_and_keep_alive().await {
-                    return false;
-                }
-                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
-            } else if lr.password.is_empty() {
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                    if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await
-                    {
-                        return keep_alive;
-                    }
-                }
-                self.try_start_cm(lr.my_id, lr.my_name, false);
-            } else {
-                let (failure, res) = self.check_failure(0).await;
-                if !res {
-                    return true;
-                }
-                if !self.validate_password(allow_logon_screen_password) {
-                    self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
-                    self.check_update_temporary_password(false);
-                    self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
-                        .await;
-                    self.try_start_cm(lr.my_id, lr.my_name, false);
-                } else {
-                    self.update_failure_with_scope(failure, true, 0, FailureScope::Default);
-                    if !self.send_logon_response_and_keep_alive().await {
-                        return false;
-                    }
-                    self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
-                }
-            }
+            // Handover: the one-time password gates the Accept prompt, the click authorises (see `login_gate`).
+            return self.password_then_click().await;
         } else if let Some(message::Union::Auth2fa(tfa)) = msg.union {
             // A 2FA response may arrive after click authorization has completed.
             // Ignore it unless this connection is still waiting for the response.
@@ -6955,32 +6861,6 @@ mod raii {
                     // Keep the session if there is another remote connection with same peer_id and session_id.
                     log::info!("skip remove session");
                 }
-            }
-        }
-
-        pub fn update_or_insert_session(
-            key: SessionKey,
-            password: Option<String>,
-            tfa: Option<bool>,
-        ) {
-            let mut lock = SESSIONS.lock().unwrap();
-            let session = lock.get_mut(&key);
-            if let Some(session) = session {
-                if let Some(password) = password {
-                    session.random_password = password;
-                }
-                if let Some(tfa) = tfa {
-                    session.tfa = tfa;
-                }
-            } else {
-                lock.insert(
-                    key,
-                    Session {
-                        random_password: password.unwrap_or_default(),
-                        tfa: tfa.unwrap_or_default(),
-                        last_recv_time: Arc::new(Mutex::new(Instant::now())),
-                    },
-                );
             }
         }
 
