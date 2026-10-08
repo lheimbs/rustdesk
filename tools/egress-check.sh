@@ -6,6 +6,7 @@
 #   tools/egress-check.sh server [seconds]   hbbs + hbbr alone (they must make no outbound connection)
 #   tools/egress-check.sh down   [seconds]   controller tries to connect while the servers are down (retry loops)
 #   tools/egress-check.sh selftest [seconds] a deliberately leaking process: must FAIL (checks the checker itself)
+#   tools/egress-check.sh offline [seconds]  servers up, controller connects to an ID nobody registered (peer offline)
 #   tools/egress-check.sh wrongkey [seconds] controller carries a different server key than the running hbbs
 #
 # Needs: unshare (user namespaces), strace, Xvfb, dbus-run-session (ui mode), python3.
@@ -85,7 +86,7 @@ else
   KEY=\$(cat "$WORK/srv/id_ed25519.pub" 2>/dev/null || echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=)
   [ "$MODE" = wrongkey ] && KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   ARGS=""
-  [ "$MODE" = down ] || [ "$MODE" = wrongkey ] && ARGS="--no-server --connect 123456789 --password wrongpassword1"
+  [ "$MODE" = down ] || [ "$MODE" = wrongkey ] || [ "$MODE" = offline ] && ARGS="--no-server --connect 123456789 --password wrongpassword1"
   printf "[options]\ncustom-rendezvous-server = '$SRV_IP'\nkey = '%s'\n" "\$KEY" > "$WORK/home/.config/handover/Handover2.toml"
   Xvfb :88 -screen 0 1280x800x24 >/dev/null 2>&1 &
   XVFB=\$!

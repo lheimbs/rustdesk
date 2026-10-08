@@ -110,25 +110,26 @@ Epic: issue #32. "Measured" = observed in an offline network namespace or on the
 | A1 | fixed, measured | `ad6184e0f` (own server and key baked in from env/`.env`, `f476314e8`; fails closed) |
 | A2 | fixed, measured | `a84caab62` |
 | A3 | fixed, measured | `a416f0c4a` (API server empty, sync/audit/upload stubbed); account/address-book UI hidden in `80bf992ff` |
-| A4 | inert, code still present | `is_public()` has no effect with an empty API server; removal left to #15 |
+| A4 | fixed | `is_public()` is a constant `false` (`b0270ad1e`); the update/API paths it guarded are removed |
 | A5 | fixed | `a416f0c4a` (no server-pushed config writes; `ConfigureUpdate` ignored in `ad6184e0f`) |
 | A6 | fixed (Windows) | `5e7c5ec28` (exe-name licence and `custom.txt` removed) |
 | A7 | fixed | `a416f0c4a` |
-| A8 | partial | desktop links `2040fe9c2`, `4fb73916b`; remaining strings and mobile-only files: #15 |
+| A8 | fixed for the built targets | desktop links `2040fe9c2`, `4fb73916b`, `abc2f016a`; `strings` scan of the Linux bundle and the Windows library finds no vendor host (plan section 2o). Mobile-only Dart pages still carry `rustdesk.com` links but are not built in this fork |
 | B1, B2 | removed from the supported builds | `5e7c5ec28`, `4fb73916b` (virtual display, printer driver) |
 | B3, B5 | not used | `tools/build-*.{sh,ps1}` use the stock Flutter 3.24.5 engine and fetch no vendor binaries |
 | B4 | fixed | `7f143873a` |
 | B6 | not enabled | the builds use only `--features flutter`; no hwcodec/vram/mediacodec/drm |
-| C1 | fixed | `bf4b97f5f`, `6b4ee6c86` (cargo-deny source policy); vendoring the small forks: #20 |
+| C1 | fixed | `bf4b97f5f`, `6b4ee6c86` (cargo-deny source policy); every git dependency vendored in `third_party/` `d8e898b5e` (#20); dependencies made dead removed `e7a08c118`, `74422d24d` (#22) |
 | C2 | fixed | `394d3e631` |
-| C3 | open | plugins are pinned by commit but unreviewed; lock regenerated under the pinned SDK `9b0a30e7c` |
-| C4 | avoided | `build.py` is not used; see `tools/build-linux.sh`, `tools/build-windows.ps1` (reproducible environment: #23) |
-| C5 | partial | own signing scripts `e22f98704`; Windows signing decision: #18 |
+| C3 | open: #34 | plugins are pinned by commit `aa232a9df` and the lock is regenerated under the pinned SDK `9b0a30e7c`, but their source is unreviewed and still fetched from GitHub |
+| C4 | avoided, builds reproducible | `build.py` is not used; `tools/build-linux.sh` (`7282214c9`, `5ddc3f69b`) and `tools/build-windows.ps1` (`3ce578eb7`) give bit-identical results across directories (#23, plan sections 2k and 2n) |
+| C5 | pipeline done; certificate is the maintainer's | own signing scripts `e22f98704`, `746ff5083` (tested with a throwaway certificate); the real certificate, and machines with Smart App Control: #18 |
 
 New findings since the table above was written (all fixed unless linked): plaintext-downgrade branches in the handshake and the
 controlled side (`ad6184e0f`); `id@host` and direct dialling (`ad6184e0f`); peer-supplied avatar URLs (`73a9e3703`); LAN discovery and
 direct server (`73a9e3703`); the pinned peer key was never persisted (`6d10ca551`); peer clipboard defaults (`3c598ec29`, `c030b3f2b`);
 no record of who connected (`8d2e48606`).
+Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (`2afbc17db`); Windows installer and library were not reproducible because of a packer timestamp and random resource-field order (`3ce578eb7`); the Linux release archive carried file times and owners (`deea33505`); approval is fixed to a click, so the displayed one-time password is never checked (`password_security::approve_mode()`; remaining UI is cosmetic, see plan section 2o).
 
 ### Work plan (do in this order; one PR-sized change each)
 
