@@ -60,3 +60,4 @@ flutter/web/
 /third_party/libdrmtap/
 /server/build/
 /kb/
+/dist/

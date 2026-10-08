@@ -148,7 +148,7 @@ Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (
    outright, rather than defaulting them off.
 4. **Egress test.** Add a single regression test or script that runs the client against a
    local `hbbs` and asserts no connection to any host other than that server and the peer
-   (`strace -f -e trace=connect`, or a network namespace with default-deny). Run before every release.
+   (`strace -f -e trace=connect`, or a network namespace with default-deny). Run before every release: `tools/egress-all.sh` (Linux, all scenarios plus a self-test of the checker) and `tools/egress-windows.ps1` (Windows).
 5. **Pin the supply chain (C1-C4).** Convert branch pins to full `rev =`, run `cargo vendor`
    or fork the critical crates under the user's account, `cargo deny` / `cargo audit` in CI,
    pin the Flutter SDK and `vcpkg` baseline, replace unpinned `wget`/`git clone` in `build.py`.
