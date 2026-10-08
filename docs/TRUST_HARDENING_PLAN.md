@@ -219,7 +219,7 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 | Binary scan, Windows `handover.exe` + `librustdesk.dll` built from HEAD | **clean** (no vendor host, STUN, nip.io, Telegram, Sentry, Firebase strings) |
 | Binary scan, Linux release bundle built from HEAD with `tools/build-linux.sh` | **clean** (the script fails the build on `rustdesk.com/.cn`, vendor servers, STUN, nip.io, telegram.org). Remaining "Telegram" strings are translation labels and a stubbed struct name, no host |
 | UI crawl (controller: settings General/Network/Display/About, ID menu, toolbar menus) with `strace -e connect,execve` | no connection, no link opener or browser executed; settings have no Account/Security pages. Findings: Network still offers "Allow insecure TLS fallback" and "Use WebSocket" toggles (user options, not defaults); the app polls `loginctl` ~200 times in a few minutes (upstream behaviour, wasteful, harmless) |
-| Reproducible build | the same commit built in two different directories gives a **byte-identical** `liblibrustdesk.so` with the shipped fat-LTO profile (SHA-256 `d2147122...c7d6`) and with LTO off; the build script bind-mounts the checkout at `/mnt` and fixes the build date. Windows: see 2k. Not compared: the Flutter tarball |
+| Reproducible build | the same commit built in two different directories gives a **byte-identical** `liblibrustdesk.so` with the shipped fat-LTO profile (SHA-256 `d2147122...c7d6`) and with LTO off; the build script bind-mounts the checkout at `/mnt` and fixes the build date. Windows: see 2k. The release tarball: see 2n |
 | Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
 | `connections.log` | verified on the real machine (2f) |
 
@@ -258,6 +258,10 @@ Method: build the same commit several times on the Windows build host (fresh dir
 ### 2m. Server units under a real system manager (2026-10-07)
 
 `server/test-system-units.sh` (root) installed the shipped units under test names and ran them as a dedicated user: **16 of 16 checks passed**. Both units active; `hbbs` runs as the dedicated user; key created with mode 600 and owned by it; a loopback source is allowed and a connection from the host's own non-loopback address is dropped by `IPAddressDeny=any` + `IPAddressAllow` (this was not effective in a user manager, so it could not be verified before); `ProtectHome` and `ProtectSystem=strict` effective for both programs; own mount namespace; no effective capabilities; no seccomp kills or permission errors in the journal. Everything was removed again (user, units, state directory, binary copy). The production unit differs only in names, paths and the allow-list taken from the deployment settings.
+
+### 2n. Linux release tarball reproducibility (2026-10-08)
+
+Two fresh copies of the checkout in different directories (no `target/`, no `.env`), each built with `tools/build-linux.sh` under a 5.5 GB memory limit (about 14 min each): the `handover-linux-x64.tar.gz` archives are **byte-identical** (SHA-256 `674aacc2...f141`) and all 89 files of the unpacked bundle (the Rust library, the Flutter engine and plugin libraries, `libapp.so`, data files) have identical hashes. This needed the archive step to be deterministic (sorted entries, `SOURCE_DATE_EPOCH` mtime, root ownership, `gzip -n`). Conditions: same host toolchain and system libraries (gtk, libvpx, libyuv, aom, opus), same Flutter SDK; the server address and key are baked in, so a different server gives a different binary.
 
 ## 3. Design decisions
 
