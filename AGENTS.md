@@ -36,8 +36,9 @@ applies), and network-egress code is deleted or hard-stubbed rather than kept be
   values (addresses, keys, allowed networks) live only in the git-ignored `.env` (template:
   `.env.example`); never commit hostnames, IPs or keys of the user's own network.
 * Run hbbs with `-k _` (reject clients lacking the key) so only builds carrying the user's key
-  can register. Consider IP allow-listing on hbbs/hbbr and always set a permanent
-  password plus `approve-mode`/whitelist on the controlled side.
+  can register. Consider IP allow-listing on hbbs/hbbr. The controlled side needs the current
+  one-time password for a prompt to appear and a click to authorise (`src/server/login_gate.rs`);
+  no permanent password is accepted.
 * The server repo and its dependencies need the same audit as this one (C1-style pins,
   `cargo audit`, own build). Treat it as in scope for the egress test: hbbs/hbbr must make
   no outbound connections.
@@ -129,7 +130,7 @@ New findings since the table above was written (all fixed unless linked): plaint
 controlled side (`ad6184e0f`); `id@host` and direct dialling (`ad6184e0f`); peer-supplied avatar URLs (`73a9e3703`); LAN discovery and
 direct server (`73a9e3703`); the pinned peer key was never persisted (`6d10ca551`); peer clipboard defaults (`3c598ec29`, `c030b3f2b`);
 no record of who connected (`8d2e48606`).
-Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (`2afbc17db`); Windows installer and library were not reproducible because of a packer timestamp and random resource-field order (`3ce578eb7`); the Linux release archive carried file times and owners (`deea33505`); approval is fixed to a click, so the displayed one-time password is never checked (`password_security::approve_mode()`; remaining UI is cosmetic, see plan section 2o).
+Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (`2afbc17db`); Windows installer and library were not reproducible because of a packer timestamp and random resource-field order (`3ce578eb7`); the Linux release archive carried file times and owners (`deea33505`); the controlled side never checked a password (any holder of the server key could raise Accept prompts), fixed by `926d93a04`: the one-time password now gates the prompt and the click authorises (plan section 2p).
 
 ### Work plan (do in this order; one PR-sized change each)
 
