@@ -16,7 +16,7 @@ use std::{
 
 const PREFIX: &str = "hc1";
 /// How far a token's timestamp may be from the verifier's clock.
-pub const WINDOW_SECS: u64 = 120;
+pub const WINDOW_SECS: u64 = 600;
 const CLOCK_LEEWAY: u64 = 86_400;
 const MAX_SEEN: usize = 200_000;
 const MAX_TOKEN_LEN: usize = 512;
