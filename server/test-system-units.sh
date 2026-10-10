@@ -36,10 +36,11 @@ install -d -m 0755 "$LIB"; install -m 0755 "$BIN/hbbs" "$BIN/hbbr" "$LIB/"
 for n in hbbs hbbr; do
   sed -e "s#^User=handover#User=$U#; s#^Group=handover#Group=$U#" \
       -e "s#/var/lib/handover-server#$STATE#g; s#/usr/local/bin/#$LIB/#" \
+      -e "s#@CA_PUB@#$(head -c 32 /dev/urandom | base64)#g" \
       -e "s#@RELAY_HOST@#127.0.0.1#g; s#^IPAddressAllow=.*#IPAddressAllow=127.0.0.0/8#; s#@ALLOWED_NETS@#127.0.0.0/8#g" \
       "$HERE/systemd/handover-$n.service" > "$DST/handover-test-$n.service"
 done
-grep -q '@RELAY_HOST@\|@ALLOWED_NETS@' "$DST/handover-test-hbbs.service" && { echo "unrendered placeholder left in the unit" >&2; exit 2; }
+grep -q '@RELAY_HOST@\|@ALLOWED_NETS@\|@CA_PUB@' "$DST/handover-test-hbbs.service" && { echo "unrendered placeholder left in the unit" >&2; exit 2; }
 systemctl daemon-reload
 systemctl start handover-test-hbbr handover-test-hbbs
 sleep 4

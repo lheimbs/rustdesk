@@ -9,6 +9,10 @@ User=handover
 Group=handover
 WorkingDirectory=/var/lib/handover-server
 Environment=RUST_LOG=info
+# Admission: only clients with credentials signed by this issuer key are served (public key from `handover-ca init`);
+# serials listed in the revocation file (one per line, # comments) are refused, re-read within seconds.
+Environment=HANDOVER_CA_PUB=@CA_PUB@
+Environment=HANDOVER_REVOKED=/var/lib/handover-server/revoked.txt
 # -k _ : generate/use id_ed25519 in the working directory and refuse clients that do not carry its public key.
 # -r   : host:port of hbbr as clients should reach it (your overlay-network/LAN address).
 ExecStart=/usr/local/bin/hbbs -k _ -r @RELAY_HOST@
