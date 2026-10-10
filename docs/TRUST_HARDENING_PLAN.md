@@ -304,6 +304,36 @@ Unit tests: 3 new ones for the decision (`login_gate`), the 11 handshake tests a
 
 **Limits.** The one-time password has 6 characters (36^6 possibilities) and is guarded by the existing per-address failure limit and rotation after repeated misses; a controller holding the server key can still make a few guesses per minute until the limit applies. The password is read out by the person at the machine, so the click is still required on top.
 
+### 2q. Admission: only controllers and machines the owner signed (2026-10-10)
+
+**Goal.** Someone who builds Handover from the public sources, or who extracts the shared key from an installed client, must not be able to connect to the machines that were handed out, or even use the servers.
+
+**What was wrong.** Reading the pinned server source (`rustdesk-server` a7736be): `-k _` compares one shared string, the server's own public key (shown in every client's settings), on exactly two messages (the connection request to `hbbs`, the relay request to `hbbr`). UDP `RegisterPeer`/`RegisterPk`, the relay request forwarded by `hbbs` and the responses machines send (`PunchHoleSent`, `LocalAddr`, `RelayResponse`) are not checked at all: anyone could register IDs, and anyone who read the key out of a client could start connections. The earlier statement in `AGENTS.md` that `-k _` lets only your builds register was wrong and is corrected.
+
+**Design.** An offline issuer key (`handover-ca init`, encrypted with a passphrase). Credentials (`libs/handover_cred`) bind a holder's Ed25519 key to a role (controller or device), a label, a serial and a validity window and are signed with the issuer key; every verifier carries only the issuer's public key.
+1. *Controlled side (end to end, trusts no server):* a login is accepted only with a controller credential and a proof signed over this connection's id, salt and challenge (24 random characters), checked before the password and before any prompt (`src/controller_auth.rs`; trust anchor `HANDOVER_CONTROLLER_CA` baked into the build, required for release builds).
+2. *Servers (patches 0004/0005):* every message to `hbbs`/`hbbr` carries a token (credential, proof bound to the message kind and subject, timestamp, nonce). Connection-starting messages need a controller credential; the rest a device or controller credential. Replay cache, ten-minute window, revocation list file (`HANDOVER_REVOKED`, re-read within seconds, an unreadable list keeps the last one), `HANDOVER_CA_PUB` required to start (fail closed). `hbbs`'s own start-up self-test registration from loopback is exempt (it exits after 12 s otherwise).
+
+**Measured.**
+| Where | Case | Result |
+|---|---|---|
+| unit tests | credential and token: valid, other issuer, expired and not-yet-valid, every single byte flipped, truncated or oversized, labels, roles, proof bound to context/domain/key, replay, stale and future timestamps, malformed tokens, revocation reread, vanishing list; controller login: other connection, other machine, device role, no credential, stolen credential without its key | 16 + 8 + gate tests pass |
+| real Windows machine, ungated servers | no credential, credential from another issuer, device credential, each with the **correct password** | refused ("Not a trusted controller"), no prompt, one-time password unchanged; reasons in `connections.log`; a valid controller credential then password then click gives a session, the log names the controller label and serial |
+| real Windows machine, gated servers (the machine registers with a baked device credential) | valid controller credential | admitted end to end through `hbbs` and `hbbr`: prompt, accept, session; 0 refusals logged |
+| same | no credential, other issuer, device role as controller | refused at `hbbs` ("Key mismatch" to the client), reasons "malformed token" / "not signed by the trusted issuer" / "wrong role" in the server log; the machine's `connections.log` shows nothing: the connection never reached it |
+| same | controller serial revoked, then un-revoked | "credential revoked" within about 7 s, admitted again after the list is emptied |
+| same | the machine's device serial revoked, then un-revoked | its registrations refused, the controller sees "Remote desktop is offline"; reachable again about a minute after the list is emptied |
+| offline namespace, real binaries | client without a credential | registration and connection request refused; with a valid controller credential the connection request is admitted; egress unchanged (0 destinations beyond the server, 0 packets on the uplink) |
+| `tools/egress-all.sh` against the admission build | all scenarios and the self-test | PASS; strings scan of the new bundle: 0 vendor hosts |
+
+**Limits.**
+* A device credential baked into a build is shared by every machine built with it: it keeps source-builders out but cannot revoke one customer. For per-customer revocation put a `device.cred` file in that machine's config directory (it takes precedence).
+* Controller credentials expire (90 days by default) and are renewed by re-issuing; the trust anchor is baked into each customer build, so changing the issuer key means new builds.
+* Revoking stops new registrations and connection requests; a session that is already running is not ended.
+* The rendezvous channel is not encrypted at the application layer, so tokens are visible to an on-path observer; they are single-use and bound to one message, and a replayed registration can only repeat the registration the legitimate machine made (the public key in it cannot be swapped), which controllers verify against the key they pinned.
+* Open ports can still be flooded; this decides who is served, not what arrives. Keep the IP allow-list where possible.
+* The issuer key is the crown jewel: keep `ca.key` off the servers and off the controllers, with a strong passphrase and an offline backup.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
