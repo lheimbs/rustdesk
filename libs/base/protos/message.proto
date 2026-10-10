@@ -84,6 +84,9 @@ message LoginRequest {
   string my_platform = 13;
   bytes hwid = 14;
   string avatar = 17;
+  // Handover: credential signed by the owner's issuer and a proof that this login holds its key.
+  bytes controller_cred = 18;
+  bytes controller_proof = 19;
 }
 
 message Terminal {

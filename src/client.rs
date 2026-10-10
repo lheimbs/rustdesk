@@ -3813,6 +3813,7 @@ impl LoginConfigHandler {
             avatar,
             ..Default::default()
         };
+        crate::controller_auth::attach(&mut lr, &self.hash);
         match self.conn_type {
             ConnType::FILE_TRANSFER => lr.set_file_transfer(FileTransfer {
                 dir: self.get_remote_dir(),

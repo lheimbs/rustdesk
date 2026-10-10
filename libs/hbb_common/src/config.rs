@@ -117,6 +117,11 @@ pub const RS_PUB_KEY: &str = match option_env!("HANDOVER_SERVER_KEY") {
     Some(s) => s,
     None => "",
 };
+// Public key of the issuer that signs trusted controllers (see libs/handover_cred); empty = trust nobody.
+pub const CONTROLLER_CA: &str = match option_env!("HANDOVER_CONTROLLER_CA") {
+    Some(s) => s,
+    None => "",
+};
 
 pub const RENDEZVOUS_PORT: i32 = 21116;
 pub const RELAY_PORT: i32 = 21117;

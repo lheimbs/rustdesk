@@ -538,7 +538,7 @@ impl Connection {
         let salt = Config::get_effective_permanent_password_salt();
         let hash = Hash {
             salt,
-            challenge: Config::get_auto_password(6),
+            challenge: Config::get_auto_password(24),
             ..Default::default()
         };
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
@@ -2537,10 +2537,11 @@ impl Connection {
     /// authorises. A wrong or missing password never reaches the connection manager.
     async fn password_then_click(&mut self) -> bool {
         use super::login_gate::{decide, Gate};
+        let controller = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash);
         let password_exists = !password::temporary_password().is_empty();
         let supplied_is_empty = self.lr.password.is_empty();
         let mut failure = None;
-        if password_exists && !supplied_is_empty {
+        if controller.is_ok() && password_exists && !supplied_is_empty {
             let (f, allowed) = self.check_failure(0).await;
             if !allowed {
                 return true;
@@ -2548,7 +2549,16 @@ impl Connection {
             failure = Some(f);
         }
         let supplied_is_correct = failure.is_some() && self.validate_temporary_password();
-        match decide(password_exists, supplied_is_empty, supplied_is_correct) {
+        match decide(controller.is_ok(), password_exists, supplied_is_empty, supplied_is_correct) {
+            Gate::UntrustedController => {
+                let reason = controller.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+                super::connection_log::record(
+                    self.inner.id(),
+                    "controller-refused",
+                    &format!("{} from {}: {}", self.lr.my_id, self.ip, reason),
+                );
+                self.send_login_error("Not a trusted controller").await;
+            }
             Gate::NoPasswordAccess => {
                 self.send_login_error("The remote side has no password to accept")
                     .await;
@@ -2566,6 +2576,13 @@ impl Connection {
                     .await;
             }
             Gate::Prompt => {
+                if let Ok(c) = &controller {
+                    super::connection_log::record(
+                        self.inner.id(),
+                        "controller",
+                        &format!("'{}' serial {}", c.label, c.serial),
+                    );
+                }
                 if let Some(f) = failure {
                     self.update_failure_with_scope(f, true, 0, FailureScope::Default);
                 }

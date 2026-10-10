@@ -88,6 +88,7 @@ fn install_android_deps() {
 fn check_baked_server() {
     println!("cargo:rerun-if-env-changed=HANDOVER_RENDEZVOUS_SERVER");
     println!("cargo:rerun-if-env-changed=HANDOVER_SERVER_KEY");
+    println!("cargo:rerun-if-env-changed=HANDOVER_CONTROLLER_CA");
     if std::env::var("PROFILE").as_deref() != Ok("release") {
         return;
     }
@@ -111,6 +112,13 @@ fn check_baked_server() {
         && key[..43]
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/');
+    let ca = setting("HANDOVER_CONTROLLER_CA");
+    if ca.len() != 44 || !ca.ends_with('=') {
+        panic!(
+            "release builds need HANDOVER_CONTROLLER_CA (base64 public key printed by `handover-ca init`) \
+             in the environment or in .env (see .env.example)"
+        );
+    }
     if server.is_empty() || !key_ok {
         panic!(
             "release builds need HANDOVER_RENDEZVOUS_SERVER (host) and HANDOVER_SERVER_KEY \
