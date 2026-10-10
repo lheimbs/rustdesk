@@ -107,7 +107,7 @@ this table: `hbb_common` contains **no** `rs-cn` default, only `rs-ny.rustdesk.c
 The 35 git-sourced crates were also pattern-audited and showed no backdoor or telemetry
 (plan §2a); transitive crates.io dependencies are covered by `cargo audit` (plan U7).
 
-### Fix status (branch `handover/trust-hardening`, 2026-10-05)
+### Fix status (branch `handover/trust-hardening`, kept current; last updated 2026-10-10)
 
 Epic: issue #32. "Measured" = observed in an offline network namespace or on the Windows test machine (plan sections 2a-2d).
 
@@ -167,6 +167,12 @@ Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (
 8. **Rebrand to Handover** (`me.heimbs.Handover`), personal use. Windows controlled side (installed
    mode + service, attended-only) and Linux Wayland controller (outgoing-only). Keep the AGPL notice
    and source-offer. See `docs/TRUST_HARDENING_PLAN.md` Phases 7, W and L.
+9. **One-time password gate.** A peer needs the current one-time password before an Accept prompt appears; the click
+   authorises (`src/server/login_gate.rs`, plan section 2p).
+10. **Admission by signed credentials.** Offline issuer key, controller and device credentials, check on the controlled
+    side and in `hbbs`/`hbbr` (`libs/handover_cred`, plan section 2q, server patches 0004/0005). Build and deployment
+    settings: `HANDOVER_CONTROLLER_CA` (public key, required for release builds), optional `HANDOVER_DEVICE_CRED`
+    (see `.env.example`); servers: `HANDOVER_CA_PUB`, `HANDOVER_REVOKED`. Operating it: `docs/ADMISSION.md`.
 
 ### Documentation rules (tickets are the memory)
 
@@ -238,10 +244,27 @@ A new session may start with an empty context. Everything needed to continue mus
 - **Audio/Video Services**: Real-time audio/video streaming in `src/server/`
 - **File Transfer**: Secure file transfer implementation in `libs/base/src/fs.rs`
 
-`hbb_common` is a git submodule shared with the server, so changing it costs a
-round-trip. Put client-only code in `libs/base` instead; it is a normal
-workspace member. `base::config::keys` re-exports the handful of keys
-`hbb_common` still reads, so callers get the whole set from that one path.
+In this fork `hbb_common` is inlined (a normal workspace member, edited directly); the open-source server build
+copies what it needs through patches (`server/patches/0002`, `0005`). `base::config::keys` re-exports the handful of
+keys `hbb_common` still reads, so callers get the whole set from that one path.
+
+### Fork-specific layout (where the Handover work lives)
+
+* `libs/handover_cred/` credentials and message tokens (Ed25519, roles, validity, revocation, replay cache) and the
+  offline issuer tool `handover-ca` (`init`, `issue`, `inspect`, `compact`); copied into the server build, not patched.
+* `src/controller_auth.rs` controller credential check on the controlled side and attach on the controller;
+  `src/admission.rs` tokens for the rendezvous and relay servers; `src/server/login_gate.rs` the pure decision
+  (trusted controller, password, prompt); `src/server/connection_log.rs` the local connection log.
+* `src/hbbs_http.rs`, `src/updater.rs` same-signature stubs of removed network features.
+* `libs/winres/` winres with sorted output (reproducible Windows resources, `HANDOVER_PATCH.md`).
+* `third_party/` every git-sourced dependency, vendored by `tools/vendor-forks.sh`; never edited by hand.
+* `server/` `build.sh` (pinned upstream commit plus patches 0001-0005 and the credential crate), `systemd/` hardened
+  units, `render-units.sh`, `test-system-units.sh` (root; verifies the units under a system manager), `README.md`.
+* `tools/` `build-linux.sh`, `build-windows.ps1`, `sign-windows.ps1`, `trust-windows-cert.ps1`, `egress-check.sh`
+  (modes ui, server, down, offline, wrongkey, selftest), `egress-all.sh` (pre-release), `egress-analyze.py`,
+  `egress-windows.ps1`, `vendor-forks.sh`, `gen-bridge.sh`.
+* `docs/TRUST_HARDENING_PLAN.md` analysis, decisions D1-D18, measured evidence (2a-2q); `docs/ADMISSION.md` operator's guide for the issuer, credentials, revocation and the error messages; `kb/` (git-ignored, local):
+  the maintainer's environment and scripts.
 
 ### UI Architecture
 - **Legacy UI**: Sciter-based (deprecated) - files in `src/ui/`

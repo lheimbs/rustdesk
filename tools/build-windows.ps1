@@ -9,7 +9,12 @@ LLVM 15.0.6, Rust 1.75 (rust-toolchain.toml), Flutter 3.24.5, Python 3 (+ pip in
 vcpkg at 9e593bb18ea69cc5095e012465dcd675a822ed0d with `vcpkg install --triplet x64-windows-static`
 run in the repo root (installed under -VcpkgInstalled), and the generated bridge files
 (tools/gen-bridge.sh on Linux, copied over: src/bridge_generated*.rs, flutter/lib/generated_bridge*.dart).
-The server address and key are compiled into the binary; a release build refuses to build without them.
+The server address, the server key and the public key of your issuer (HANDOVER_CONTROLLER_CA, printed by
+`handover-ca init`) are compiled into the binary; a release build refuses to build without them. Optional:
+HANDOVER_DEVICE_CRED (output of `handover-ca compact device.cred`) lets the machine register with servers that
+require signed admission. Reproducibility: the checkout is mapped to a fixed drive letter (`-Drive`, default R:) with
+`subst`, the build date is the commit time (or `-SourceDateEpoch`; a source archive without .git needs it), linking uses
+/Brepro. Two builds of one commit then give identical files (plan section 2k). Signing: see -Sign and tools/sign-windows.ps1.
 #>
 param(
   [string]$Server,

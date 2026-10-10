@@ -1,6 +1,17 @@
 # Trust-hardening plan (self-hosted hbbs/hbbr only)
 
-Status: **v5**, 2026-10-04 (three adversarial review passes + Phase 0 measurements + Windows/Wayland scope change folded in). Base `master @ e5bc204fe`,
+> **Resume here (kept current; last updated 2026-10-10).** The work is done and verified on branch `handover/trust-hardening`
+> (epic #32; every story has a closing comment with evidence). Read in this order: `AGENTS.md` (rules, threat model,
+> audit table with commit hashes, documentation rules), the epic #32 (state, open items, decisions), the runbook #33
+> (commands, procedures, gotchas), then this file: section 2 (measured evidence, newest at the end: 2i-2q), section 3
+> (design decisions D1-D18), section 4 (phase status), section 10 (decisions by date). What is still open: #18 (the
+> owner's real signing certificate and a Smart App Control machine), #23 (a second build host), #34 (review and vendor
+> the Flutter git plugins), #35 (dead UI entries and leftover brand strings); stated gaps are listed in the epic.
+> Newest security features and where they live: one-time password gates the prompt (section 2p, `src/server/login_gate.rs`);
+> admission by signed credentials (section 2q, operator's guide `docs/ADMISSION.md`, `libs/handover_cred`, `src/controller_auth.rs`, `src/admission.rs`,
+> `server/patches/0004`/`0005`). Secrets (issuer key, controller and device credentials, tokens) are never in the repo, `.env.example`, tickets or this file.
+
+Status: **v5**, 2026-10-04 (three adversarial review passes + Phase 0 measurements + Windows/Wayland scope change folded in). Sections 2i-2q, decisions D11-D18 and phase 12 were added through 2026-10-10 as the work was implemented and measured; sections written before then describe the plan as it stood and are kept for the reasoning, the status tables are current. Base `master @ e5bc204fe`,
 hbb_common `229b904` (checked out from the vendor repo; its diff vs. what the client expects was not audited),
 server `rustdesk-server @ a7736be` (1.1.17-dev, its hbb_common `69cea8d`).
 
@@ -372,9 +383,27 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 
 **D7. Attended-only (user decision 2026-10-04): no unattended access, no camera, no recording.** Every session needs a local click on the controlled machine, so the helped person is always present and consenting. Consequences (all deletions/hard-offs, Phase 6): permanent password (UI, `--password`, `permanent_password.rs` storage), `hide_cm`, `allow-hide-cm`, auto-approve and the `approve-mode` choice (hard `click`), IP whitelist-as-auth, remote restart (`enable-remote-restart`: a restart ends the session and nothing can reconnect without a person), the Linux root service (D10: kept only on Windows), camera (`ViewCamera`, `nokhwa` dep) and session recording (local `record_*`, `scrap` webm/record paths, `rust-webm` dep, `record_upload`). Temporary one-time password stays as a second factor together with the click [recommended, §10].
 
+**Decisions after v5 (2026-10-05 to 2026-10-10).** Each is implemented and verified; the evidence section is named.
+
+**D11. Dead dependencies are removed, not stubbed (owner: "yes do the trim", #22).** `webm`, `nokhwa`, `reqwest`/`hyper` and the HTTP/API layer are gone; the same-signature stubs in `src/hbbs_http.rs`, `src/updater.rs` and `src/common.rs` remain so FFI and Dart callers still compile (§2i).
+
+**D12. Windows signing (#18).** The owner creates and holds the real self-signed certificate, enrolls it on machines that need it and signs the final binaries himself; the pipeline (`tools/build-windows.ps1 -Sign`, `tools/sign-windows.ps1`, which refuses to create a certificate unless `-Create`) was tested with a throwaway certificate that was removed afterwards. Smart App Control in enforcing mode rejects self-signed certificates (§2i).
+
+**D13. Reproducible builds.** Fixed build path (Linux: checkout bind-mounted at `/mnt` in a user namespace; Windows: checkout mapped to a fixed drive letter with `subst`), `SOURCE_DATE_EPOCH` = commit time, `/Brepro`, path remapping, sorted packer input stamped with the epoch, `libs/winres` (sorted resource fields), deterministic tarball. Verified bit-identical across directories (§2k, §2n); a second build host is open (#23).
+
+**D14. The egress check proves itself.** Syscall trace plus packet capture on a fake uplink; a deliberately leaking process (`selftest`) must make it fail; `tools/egress-all.sh` is the pre-release command; Windows uses per-process Filtering Platform audit; 24 h soaks (§2j, §2o).
+
+**D15. Approval policy.** The one-time password must be right before any Accept prompt appears and the click authorises (`src/server/login_gate.rs`); no permanent password is accepted; no "recent session" shortcut; failure limit and rotation apply. Earlier (D7) the approval was click-only and the displayed password meant nothing (§2p).
+
+**D16. Admission (owner intent: keep out anyone who builds from the public sources or holds a client's shared key; explicitly not a licence scheme).** Offline issuer key; credentials with roles controller/device; (1) the controlled side accepts a login only from a controller with a credential signed by the issuer baked into the build (end to end, before the password and the prompt); (2) `hbbs`/`hbbr` serve only messages carrying a token from such a credential, fail closed without `HANDOVER_CA_PUB`, revocation file, replay cache. Defaults the owner accepted: controller credentials last 90 days; the issuer key is passphrase-protected (Argon2id) and lives on a machine that is not a controller; the device credential is baked into builds (shared) with a per-machine `device.cred` file taking precedence; token window ten minutes (skewed clocks); trust anchor `HANDOVER_CONTROLLER_CA` is required for release builds. `-k _` is no access control (§2q).
+
+**D17. Documentation policy.** GitHub issues are the system of record (epic #32, runbook #33, one comment per verified fact); personal details live only in the git-ignored local `kb/`; every push is preceded by `kb/scripts/scrub-check.sh` (AGENTS.md "Documentation rules").
+
+**D18. Test-machine discipline.** Anything installed on the shared physical Windows test machine (service, firewall rules, registry policy, audit policy, certificates, build directories) is removed again and verified; a throwaway signing certificate is removed by thumbprint; long unattended runs are started detached and never share a process-killing cleanup (`pkill` reaches into other network namespaces).
+
 ## 4. Phases
 
-**Status (2026-10-06, branch `handover/trust-hardening`; epic #32).** Evidence for each row is in section 2a-2h.
+**Status (2026-10-10, branch `handover/trust-hardening`; epic #32).** Evidence for each row is in section 2 (newest: 2i-2q).
 
 | Phase | Status | Issues |
 |---|---|---|
@@ -384,15 +413,15 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 | 3 API/Pro surface | done, measured | #8 |
 | 4 updates | done, measured | #9 |
 | 5 third-party hosts | done, measured | #10 |
-| 6 attended-only defaults, local attack surface, connection log | done, measured on the laptop | #11, #12, #13, #29 |
-| 7 UI links and rebrand | done for supported builds | #14, #15 |
-| W Windows controlled side | done; built, installed and exercised on a real machine | #16, #17, #28 |
+| 6 attended-only defaults, local attack surface, connection log | done, measured on the laptop; password gate added (2p) | #11, #12, #13, #29, #36 |
+| 7 UI links and rebrand | done for supported builds; cosmetic leftovers | #14, #15, #35 |
+| W Windows controlled side | done; built, installed and exercised on a real machine (service restart, UAC, input, files) | #16, #17, #28 |
 | L Linux controller | done | #11, #24 |
-| 8 supply chain | done (pins, cargo-deny, vendored forks, Flutter lock); crate trimming deliberately not done | #19, #20, #21, #22 |
-| 9 build and release | Linux: scripted, reproducible (byte-identical across directories, shipped profile); Windows: scripted; signing decision pending | #23, #24, #18 |
-| 10 server | built from a pinned commit with patches; sandbox directives exercised; egress and soak pass; not yet on a real systemd host | #25 |
-| 11 acceptance | partly done, see 2h | #26, #27 |
-
+| 8 supply chain | done: pins, cargo-deny, every git dependency vendored, Flutter lock, dead crates removed; Flutter git plugins unreviewed | #19, #20, #21, #22, #34 |
+| 9 build and release | Linux and Windows scripted and bit-identical across directories on one host; signing pipeline tested, real certificate is the owner's | #23, #24, #18 |
+| 10 server | pinned commit plus patches 0001-0005; units pass 16/16 under a real system manager; admission (signed credentials) verified; 24 h soak PASS | #25, #37 |
+| 11 acceptance | done on the final binaries (2o) | #26, #27 |
+| 12 admission by signed credentials | done, measured on the real machine and offline (2q) | #37 |
 
 ### Phase 0: Prerequisites and baseline (no code changes) 
 **Status: DONE 2026-10-04** (toolchain installed with your approval; results in §2a and §9: baseline builds, baseline egress measured, interop answered, audit run). Remaining Phase 0 leftovers moved to Phase 11: `--cm`/`--tray` isolation, 24 h server soak.
@@ -510,6 +539,7 @@ Build pinned commit `--locked`, `cargo audit`; remove `check_software_update` (`
 `src/flutter_ffi.rs`, `ui_interface.rs`, `core_main.rs`, `ipc.rs`, `auth_2fa.rs` · Flutter: `utils/http_service.dart`,
 `models/{user,ab,group,model}_model.dart`, `common.dart`, `desktop_home_page.dart`, settings/login/toolbar/install pages, `pubspec.yaml` ·
 `Cargo.toml` (all, incl. rev pins), `.gitmodules`, new `rust-toolchain.toml`, `deny.toml`, `build.py`, `res/DEBIAN/*`, `res/rustdesk.service`, `res/*.spec` · AGENTS.md.
+Later changes (2026-10-05 to 10-10): `src/server/connection.rs` (login: the old approval chain, permanent-password validation and the recent-session shortcut are removed; `password_then_click`, controller-credential check, longer challenge), `src/client.rs`, `src/rendezvous_mediator.rs`, `src/server.rs`, `src/ui_interface.rs` (admission tokens, controller credential on login), `libs/base/protos/message.proto` (two login fields), `libs/hbb_common/protos/rendezvous.proto` (admission field on five messages), `libs/hbb_common/src/config.rs` and `build.rs` (baked issuer key and device credential), root `build.rs` (release builds require the issuer key), `src/common.rs` (`is_public()` constant false, HTTP stubs), `src/hbbs_http.rs`, `src/updater.rs`, `libs/scrap` (recorder and camera stubs), `libs/portable/generate.py` and `libs/winres` (reproducible packer), `tools/*`, `server/*` (patches 0004/0005, units, build and test scripts), `Cargo.toml` and `Cargo.lock` (new path crates `handover-cred` and `winres`).
 Behaviour intentionally lost: accounts, address book, groups, audit, session upload, update checks, WebRTC, Telegram 2FA, `id@public`/`id@host`, server-pushed server lists, `custom.txt`, LAN discovery/WoL, deep-link config/password, avatar images from URLs.
 
 ## 7. Egress test design (D4)
@@ -534,6 +564,13 @@ Windows is **in scope** as the controlled side (Phase W): its exe-name licence, 
 | R1 | Upstream merge conflicts grow | Accepted; permanent fork; keep stubs signature-compatible |
 
 ## 10. Decisions
+
+**Decisions made after 2026-10-04 (summary; the design is in section 3, D11-D18).**
+- 2026-10-05: the owner enabled issues on the fork and approved the epic and story structure; personal network details must never appear in anything pushed or posted (hence `.env`, the local `kb/` and the scrub check).
+- 2026-10-06: "yes do the trim" (D11); signing: the owner keeps the real certificate, the pipeline is tested with a throwaway one (D12); tickets are the memory, personal details in the local kb (D17).
+- 2026-10-08: "do it" to the one-time password gating the prompt, with the click on top (D15).
+- 2026-10-10: admission by signed credentials, including `hbbs`/`hbbr` gating, "not a licence" (D16); the owner's real issuer key is still to be created by the owner.
+
 
 Resolved by the user 2026-10-04:
 1. **Inline `hbb_common`.**

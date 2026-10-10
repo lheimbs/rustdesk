@@ -7,7 +7,7 @@ Nothing here uses the closed Pro server or its API.
 
 ```
 server/build.sh            # clones upstream at a pinned commit, verifies the hbb_common submodule,
-                           # applies server/patches/*.patch, builds with --locked, prints SHA256SUMS
+                           # applies server/patches/*.patch (0001-0005), copies libs/handover_cred, builds with --locked, prints SHA256SUMS
 ```
 
 Pinned: `rustdesk/rustdesk-server@a7736be5e40f85bfc141120dce587e836e5d4b80` (hbb_common
@@ -20,6 +20,8 @@ What the patches change (and why):
 | `0001-hardening.patch` | `hbbs` no longer makes its only outbound connection (a daily update check to the vendor, measured in an offline netns); unused `reqwest`, `axum` and `minreq` dependencies are removed (drops `h2`, `hyper`, `axum-core`, `native-tls` from the tree); lock bumps for `anyhow`, `crossbeam-epoch`, `openssl`; WebSocket connections on 21118/21119 are refused before any HTTP parsing (the browser client is not used and the WebSocket stack, `tungstenite` 0.17, has a remote DoS advisory). |
 | `0002-hbb_common-no-version-check.patch` | removes the hard-coded vendor version-check URL and request builder from the shared library. |
 | `0003-bump-rustls.patch` | lockfile only: `rustls` 0.23.42 -> 0.23.45 and `rustls-webpki` 0.103.13 -> 0.103.15 (RUSTSEC-2026-0285). Re-resolving also moved one Windows-only `windows-targets` entry, irrelevant on Linux. |
+| `0004-handover-admission.patch` | Admission (see "Admission" below): `hbbs` and `hbbr` check a signed token on registration, public-key registration, connection and relay requests and the responses machines send; refuse to start without `HANDOVER_CA_PUB`; `HANDOVER_REVOKED` revocation file; `hbbs`'s own loopback self-test registration is exempt. Uses the credential crate `libs/handover_cred`, which `build.sh` copies into the tree (it is not part of the patch). |
+| `0005-hbb_common-admission-fields.patch` | `string licence_key = 20` on `RegisterPeer`, `RegisterPk`, `PunchHoleSent`, `LocalAddr` and `RelayResponse` (the admission token), matching the client's `rendezvous.proto`. |
 
 ## Run
 
@@ -27,7 +29,7 @@ Use the hardened units in `server/systemd/` (sandboxing, no capabilities, `IPAdd
 allow-list). They are templates: addresses come from your git-ignored `.env` (copy `.env.example`):
 
 ```
-cp .env.example .env     # set HANDOVER_RELAY_HOST and HANDOVER_ALLOWED_NETS (and the client settings)
+cp .env.example .env     # set HANDOVER_RELAY_HOST, HANDOVER_ALLOWED_NETS and HANDOVER_CONTROLLER_CA (issuer public key, see docs/ADMISSION.md) and the client settings
 server/render-units.sh   # writes server/build/systemd/*.service with your values (git-ignored)
 
 useradd --system --home /var/lib/handover-server --shell /usr/sbin/nologin handover

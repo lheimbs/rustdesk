@@ -3,7 +3,8 @@
 #
 #   tools/build-linux.sh [output dir]       default: dist/
 #
-# Inputs : HANDOVER_RENDEZVOUS_SERVER and HANDOVER_SERVER_KEY, from the environment or the git-ignored .env
+# Inputs : HANDOVER_RENDEZVOUS_SERVER, HANDOVER_SERVER_KEY and HANDOVER_CONTROLLER_CA (public key of your issuer),
+#          from the environment or the git-ignored .env
 #          (see .env.example); a release build refuses to start without them.
 # Needs  : Rust per rust-toolchain.toml, Flutter 3.24.5, clang/libclang, cmake, ninja, pkg-config, GTK3 and the
 #          libvpx/aom/opus/libyuv development packages (libyuv needs a libyuv.pc; on Arch create one pointing at
