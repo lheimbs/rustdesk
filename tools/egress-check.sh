@@ -14,6 +14,7 @@
 #        BUNDLE      Flutter bundle executable (default flutter/build/linux/x64/debug/bundle/handover)
 #        KEEP=1      keep the work directory (logs) instead of deleting it
 #        PCAP=0      skip the packet capture (default: needs tcpdump)
+#        CRED=<file> controller credential for the client (the servers need HANDOVER_CA_PUB when they are the admission build)
 # The namespace has a fake uplink (a dummy interface with default routes), so connect() succeeds and every packet that
 # would have left the machine (IPv4/IPv6, multicast, broadcast, whatever syscall sent it) is recorded and must be empty.
 set -euo pipefail
@@ -88,6 +89,7 @@ else
   ARGS=""
   [ "$MODE" = down ] || [ "$MODE" = wrongkey ] || [ "$MODE" = offline ] && ARGS="--no-server --connect 123456789 --password wrongpassword1"
   printf "[options]\ncustom-rendezvous-server = '$SRV_IP'\nkey = '%s'\n" "\$KEY" > "$WORK/home/.config/handover/Handover2.toml"
+  [ -z "${CRED:-}" ] || install -m 600 "${CRED:-}" "$WORK/home/.config/handover/controller.cred"
   Xvfb :88 -screen 0 1280x800x24 >/dev/null 2>&1 &
   XVFB=\$!
   sleep 2

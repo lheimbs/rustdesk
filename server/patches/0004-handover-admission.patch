@@ -118,20 +118,22 @@ index 3754314..5b1251e 100644
                  }
                  if !rf.uuid.is_empty() {
 diff --git i/src/rendezvous_server.rs w/src/rendezvous_server.rs
-index cdf6938..7ed3842 100644
+index cdf6938..a8a00b8 100644
 --- i/src/rendezvous_server.rs
 +++ w/src/rendezvous_server.rs
-@@ -354,6 +354,9 @@ impl RendezvousServer {
+@@ -354,6 +354,11 @@ impl RendezvousServer {
              match msg_in.union {
                  Some(rendezvous_message::Union::RegisterPeer(rp)) => {
                      // B registered
-+                    if !crate::common::handover_admit(&rp.licence_key, "register", &rp.id, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                    // hbbs's own start-up self-test registers this id from loopback and exits when nobody answers
++                    let self_test = rp.id == "(:test_hbbs:)" && try_into_v4(addr).ip().is_loopback();
++                    if !self_test && !crate::common::handover_admit(&rp.licence_key, "register", &rp.id, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
 +                        return Ok(());
 +                    }
                      if !rp.id.is_empty() {
                          log::trace!("New peer registered: {:?} {:?}", &rp.id, &addr);
                          self.update_addr(rp.id, addr, socket).await?;
-@@ -372,6 +375,10 @@ impl RendezvousServer {
+@@ -372,6 +377,10 @@ impl RendezvousServer {
                      if rk.uuid.is_empty() || rk.pk.is_empty() {
                          return Ok(());
                      }
@@ -142,7 +144,7 @@ index cdf6938..7ed3842 100644
                      let id = rk.id;
                      let ip = addr.ip().to_string();
                      if id.len() < 6 {
-@@ -520,6 +527,9 @@ impl RendezvousServer {
+@@ -520,6 +529,9 @@ impl RendezvousServer {
                      return true;
                  }
                  Some(rendezvous_message::Union::RequestRelay(mut rf)) => {
@@ -152,7 +154,7 @@ index cdf6938..7ed3842 100644
                      // there maybe several attempt, so sink can be none
                      if let Some(sink) = sink.take() {
                          self.tcp_punch.lock().await.insert(try_into_v4(addr), sink);
-@@ -534,6 +544,9 @@ impl RendezvousServer {
+@@ -534,6 +546,9 @@ impl RendezvousServer {
                      return true;
                  }
                  Some(rendezvous_message::Union::RelayResponse(mut rr)) => {
@@ -162,7 +164,7 @@ index cdf6938..7ed3842 100644
                      let addr_b = AddrMangle::decode(&rr.socket_addr);
                      rr.socket_addr = Default::default();
                      let id = rr.id();
-@@ -554,9 +567,15 @@ impl RendezvousServer {
+@@ -554,9 +569,15 @@ impl RendezvousServer {
                      allow_err!(self.send_to_tcp_sync(msg_out, addr_b).await);
                  }
                  Some(rendezvous_message::Union::PunchHoleSent(phs)) => {
@@ -178,7 +180,7 @@ index cdf6938..7ed3842 100644
                      allow_err!(self.handle_local_addr(la, addr, None).await);
                  }
                  Some(rendezvous_message::Union::TestNatRequest(tar)) => {
-@@ -708,8 +727,7 @@ impl RendezvousServer {
+@@ -708,8 +729,7 @@ impl RendezvousServer {
          ws: bool,
      ) -> ResultType<(RendezvousMessage, Option<SocketAddr>)> {
          let mut ph = ph;

@@ -20,9 +20,13 @@ SRC=$OUT/src
 mkdir -p "$OUT"
 [ -d "$SRC/.git" ] || git clone "$REPO" "$SRC"
 git -C "$SRC" fetch --quiet origin
+git -C "$SRC" reset --quiet --hard
 git -C "$SRC" checkout --quiet --detach "$COMMIT"
 git -C "$SRC" reset --quiet --hard "$COMMIT"
 git -C "$SRC" submodule update --quiet --init --recursive
+# start from pristine trees: a previous run leaves the submodule patched, and the patches below must apply cleanly
+git -C "$SRC" submodule foreach --quiet --recursive "git reset --quiet --hard && git clean -qfd"
+git -C "$SRC" clean -qfd -e target
 
 actual=$(git -C "$SRC/libs/hbb_common" rev-parse HEAD)
 if [ "$actual" != "$HBB_COMMON" ]; then
