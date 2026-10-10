@@ -61,6 +61,30 @@ source address is dropped by the IP filter, and removes everything again on exit
 Only your own networks should reach these ports; nothing needs the Internet. Allow outbound DNS only if
 you resolve hostnames; the servers themselves make no outbound connections.
 
+## Admission: only clients you signed
+
+`-k _` on the stock servers is **not** an access control. It only compares a shared string, the server's own public key
+(printed in the clients' settings), and only on two messages: the connection request to `hbbs` and the relay request to
+`hbbr`. Registration (UDP `RegisterPeer`/`RegisterPk`), the relay request forwarded by `hbbs`, and the responses machines
+send (`PunchHoleSent`, `LocalAddr`, `RelayResponse`) are not checked at all, so anyone can register IDs and anyone who
+reads the key out of a client can start connections.
+
+Patches 0004/0005 replace that with signed admission. You hold an issuer key (`handover-ca init <dir>`, kept offline,
+encrypted with a passphrase) and sign credentials for the machines and controllers you trust (`handover-ca issue`).
+Every message to `hbbs`/`hbbr` carries a token: the credential plus a proof bound to that message, a timestamp (ten-minute
+window) and a nonce. The servers check the issuer's signature, the validity window, the role, the proof, the revocation
+list and that the token was not used before:
+
+| Message | Needs |
+|---|---|
+| connection request, relay request to `hbbs` | a **controller** credential |
+| registration, public-key registration, `PunchHoleSent`, `LocalAddr`, `RelayResponse`, relay request to `hbbr` | a **device** or a controller credential |
+
+Configuration (units: `Environment=` lines, rendered by `render-units.sh` from `HANDOVER_CONTROLLER_CA` in `.env`):
+`HANDOVER_CA_PUB` is the issuer's public key; **without it the servers refuse to start**. `HANDOVER_REVOKED` names a file
+with one serial per line (`#` comments), re-read within seconds, no restart. Refusals are logged with the reason, one line
+per second at most. Revoking stops new registrations and connection requests; a session that is already running is not ended.
+
 ## Warnings
 
 * **Admin console:** `hbbs` (21115) and `hbbr` (21117) treat any plain TCP connection whose *source

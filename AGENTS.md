@@ -35,10 +35,15 @@ applies), and network-egress code is deleted or hard-stubbed rather than kept be
   (or fail with a clear error when absent); never fall back to vendor values. Deployment-specific
   values (addresses, keys, allowed networks) live only in the git-ignored `.env` (template:
   `.env.example`); never commit hostnames, IPs or keys of the user's own network.
-* Run hbbs with `-k _` (reject clients lacking the key) so only builds carrying the user's key
-  can register. Consider IP allow-listing on hbbs/hbbr. The controlled side needs the current
-  one-time password for a prompt to appear and a click to authorise (`src/server/login_gate.rs`);
-  no permanent password is accepted.
+* Admission is by credentials signed with the owner's offline issuer key (`libs/handover_cred`, tool
+  `handover-ca`): `hbbs`/`hbbr` serve only messages carrying a token made from such a credential
+  (server patches 0004/0005, `HANDOVER_CA_PUB` required to start, `HANDOVER_REVOKED` list), and a customer
+  machine accepts a login only from a controller with a signed controller credential (`src/controller_auth.rs`,
+  trust anchor `HANDOVER_CONTROLLER_CA` baked into the build). `-k _` alone is no access control: it checks
+  a shared string on two messages only (server README). Consider IP allow-listing on hbbs/hbbr. The
+  controlled side then needs the current one-time password for a prompt to appear and a click to authorise
+  (`src/server/login_gate.rs`); no permanent password is accepted. Secret keys (issuer, controller, device)
+  never go in the repo, `.env` or a ticket.
 * The server repo and its dependencies need the same audit as this one (C1-style pins,
   `cargo audit`, own build). Treat it as in scope for the egress test: hbbs/hbbr must make
   no outbound connections.
