@@ -33,6 +33,14 @@ fi
 git -C "$SRC" apply "$HERE/patches/0001-hardening.patch"
 git -C "$SRC/libs/hbb_common" apply "$HERE/patches/0002-hbb_common-no-version-check.patch"
 git -C "$SRC" apply "$HERE/patches/0003-bump-rustls.patch"
+# Handover admission: the shared credential crate (copied, not patched) and the patches that make hbbs/hbbr serve
+# only clients holding a credential signed by the owner's issuer (HANDOVER_CA_PUB must be set to start them).
+rm -rf "$SRC/libs/handover_cred"
+mkdir -p "$SRC/libs/handover_cred"
+cp -r "$HERE/../libs/handover_cred/Cargo.toml" "$HERE/../libs/handover_cred/src" "$SRC/libs/handover_cred/"
+rm -rf "$SRC/libs/handover_cred/src/bin"
+git -C "$SRC" apply "$HERE/patches/0004-handover-admission.patch"
+git -C "$SRC/libs/hbb_common" apply "$HERE/patches/0005-hbb_common-admission-fields.patch"
 
 (cd "$SRC" && cargo +"$TOOLCHAIN" build --release --locked)
 

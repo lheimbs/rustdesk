@@ -1571,10 +1571,15 @@ async fn check_id(
     .await
     {
         let mut msg_out = Message::new();
+        let licence_key = crate::admission::machine_token(
+            "registerpk",
+            &crate::admission::register_pk_context(&id, &uuid, &[]),
+        );
         msg_out.set_register_pk(RegisterPk {
             old_id,
             id,
             uuid,
+            licence_key,
             ..Default::default()
         });
         let mut ok = false;

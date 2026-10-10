@@ -3,6 +3,7 @@
 //!   handover-ca init <dir>                                     create the issuer key (encrypted) and print its public key
 //!   handover-ca issue <dir> --role controller|device --label <text> [--days N] --out <file>
 //!   handover-ca inspect <file> [--ca-pub <base64 or file>]     show a credential; verify it when the public key is given
+//!   handover-ca compact <file>                                 one-line form of a credential file (HANDOVER_DEVICE_CRED for a build)
 //!
 //! Run it on a machine that is not a controller. The issuer key never leaves <dir>/ca.key, which is encrypted with
 //! a passphrase (Argon2id + XSalsa20-Poly1305). HANDOVER_CA_PASSPHRASE overrides the prompt (scripts and tests only).
@@ -197,9 +198,13 @@ fn main() {
         Some("init") if args.len() == 2 => cmd_init(Path::new(&args[1])),
         Some("issue") if args.len() >= 2 => cmd_issue(Path::new(&args[1]), &args[2..]),
         Some("inspect") if args.len() >= 2 => cmd_inspect(&args[1], &args[2..]),
+        Some("compact") if args.len() == 2 => {
+            let text = fs::read_to_string(&args[1]).unwrap_or_else(|e| die(&format!("cannot read {}: {e}", args[1])));
+            println!("{}", HolderFile::from_text(&text).unwrap_or_else(|e| die(&e.to_string())).to_compact());
+        }
         _ => {
             eprintln!(
-                "usage:\n  handover-ca init <dir>\n  handover-ca issue <dir> --role controller|device --label <text> [--days N] --out <file>\n  handover-ca inspect <file> [--ca-pub <base64|file>]"
+                "usage:\n  handover-ca init <dir>\n  handover-ca issue <dir> --role controller|device --label <text> [--days N] --out <file>\n  handover-ca inspect <file> [--ca-pub <base64|file>]\n  handover-ca compact <file>"
             );
             std::process::exit(2)
         }

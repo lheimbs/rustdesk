@@ -4,7 +4,7 @@ fn bake_from_dotenv() {
     let path = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../.env");
     println!("cargo:rerun-if-changed={}", path.display());
     let text = std::fs::read_to_string(&path).unwrap_or_default();
-    for name in ["HANDOVER_RENDEZVOUS_SERVER", "HANDOVER_SERVER_KEY", "HANDOVER_CONTROLLER_CA"] {
+    for name in ["HANDOVER_RENDEZVOUS_SERVER", "HANDOVER_SERVER_KEY", "HANDOVER_CONTROLLER_CA", "HANDOVER_DEVICE_CRED"] {
         println!("cargo:rerun-if-env-changed={name}");
         if std::env::var_os(name).is_some() {
             continue;

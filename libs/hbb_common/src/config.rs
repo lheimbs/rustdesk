@@ -122,6 +122,12 @@ pub const CONTROLLER_CA: &str = match option_env!("HANDOVER_CONTROLLER_CA") {
     Some(s) => s,
     None => "",
 };
+// Optional default device credential (`handover-ca compact` output) for machines that register with the servers;
+// a device.cred file in the config directory takes precedence.
+pub const DEVICE_CRED: &str = match option_env!("HANDOVER_DEVICE_CRED") {
+    Some(s) => s,
+    None => "",
+};
 
 pub const RENDEZVOUS_PORT: i32 = 21116;
 pub const RELAY_PORT: i32 = 21117;

@@ -1,0 +1,190 @@
+diff --git i/Cargo.lock w/Cargo.lock
+index 91b1704..11a2327 100644
+--- i/Cargo.lock
++++ w/Cargo.lock
+@@ -1485,6 +1485,14 @@ dependencies = [
+  "subtle",
+ ]
+ 
++[[package]]
++name = "handover-cred"
++version = "0.1.0"
++dependencies = [
++ "base64 0.22.1",
++ "sodiumoxide",
++]
++
+ [[package]]
+ name = "hashbrown"
+ version = "0.11.2"
+@@ -1593,6 +1601,7 @@ dependencies = [
+  "dns-lookup",
+  "flate2",
+  "flexi_logger 0.22.3",
++ "handover-cred",
+  "hbb_common",
+  "headers",
+  "http 0.2.7",
+diff --git i/Cargo.toml w/Cargo.toml
+index 5bfbaf8..08d784f 100644
+--- i/Cargo.toml
++++ w/Cargo.toml
+@@ -18,6 +18,7 @@ path = "src/utils.rs"
+ 
+ [dependencies]
+ hbb_common = { path = "libs/hbb_common" }
++handover-cred = { path = "libs/handover_cred" }
+ serde_derive = "1.0"
+ serde = "1.0"
+ serde_json = "1.0"
+diff --git i/src/common.rs w/src/common.rs
+index 98bbcaa..f7414fa 100644
+--- i/src/common.rs
++++ w/src/common.rs
+@@ -375,3 +375,37 @@ mod tests {
+             .is_none());
+     }
+ }
++
++// Handover: admission by tokens signed by the owner's issuer (libs/handover_cred). The servers refuse to
++// start without HANDOVER_CA_PUB; HANDOVER_REVOKED optionally names a file of revoked serials.
++static HANDOVER_GATE: std::sync::OnceLock<handover_cred::token::Gate> = std::sync::OnceLock::new();
++static HANDOVER_LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++static HANDOVER_SUPPRESSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++
++pub fn handover_gate_init() -> ResultType<()> {
++    let gate = handover_cred::token::Gate::from_env()
++        .map_err(|e| hbb_common::anyhow::anyhow!("admission is not configured: {e}"))?;
++    let _ = HANDOVER_GATE.set(gate);
++    log::info!("admission: only clients with credentials signed by the configured issuer are served");
++    Ok(())
++}
++
++/// Is this token a fresh, unrevoked one of an allowed role for exactly this message? Failures are logged,
++/// at most one line per second (the rest is counted) so that an attacker cannot flood the log.
++pub fn handover_admit(token: &str, kind: &str, context: &str, roles: &[handover_cred::Role], from: &str) -> bool {
++    use std::sync::atomic::Ordering::Relaxed;
++    let Some(gate) = HANDOVER_GATE.get() else { return false };
++    match gate.check(token, kind, context, roles) {
++        Ok(_) => true,
++        Err(e) => {
++            let now = handover_cred::token::now_secs();
++            if HANDOVER_LAST_LOG.swap(now, Relaxed) != now {
++                let n = HANDOVER_SUPPRESSED.swap(0, Relaxed);
++                log::warn!("admission refused ({kind}) from {from}: {e}{}", if n > 0 { format!(" [+{n} more in the last second]") } else { String::new() });
++            } else {
++                HANDOVER_SUPPRESSED.fetch_add(1, Relaxed);
++            }
++            false
++        }
++    }
++}
+diff --git i/src/hbbr.rs w/src/hbbr.rs
+index e6763fa..59e8b98 100644
+--- i/src/hbbr.rs
++++ w/src/hbbr.rs
+@@ -29,6 +29,7 @@ fn main() -> ResultType<()> {
+             section.iter().for_each(|(k, v)| common::set_arg(k, v));
+         }
+     }
++    common::handover_gate_init()?;
+     let mut port = RELAY_PORT;
+     if let Some(v) = common::get_arg_opt("PORT") {
+         let v: i32 = v.parse().unwrap_or_default();
+diff --git i/src/main.rs w/src/main.rs
+index d422c3c..107bded 100644
+--- i/src/main.rs
++++ w/src/main.rs
+@@ -33,6 +33,7 @@ fn main() -> ResultType<()> {
+     let bind_addr = parse_bind_address(&get_arg("bind"))?;
+     let rmem = get_arg("rmem").parse::<usize>().unwrap_or(RMEM);
+     let serial: i32 = get_arg("serial").parse().unwrap_or(0);
++    crate::common::handover_gate_init()?;
+     crate::common::check_software_update();
+     RendezvousServer::start_with_bind(
+         bind_addr,
+diff --git i/src/relay_server.rs w/src/relay_server.rs
+index 3754314..5b1251e 100644
+--- i/src/relay_server.rs
++++ w/src/relay_server.rs
+@@ -466,8 +466,7 @@ async fn make_pair_(stream: impl StreamTrait, addr: SocketAddr, key: &str, limit
+     if let Ok(Some(Ok(bytes))) = timeout(30_000, stream.recv()).await {
+         if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(&bytes) {
+             if let Some(rendezvous_message::Union::RequestRelay(rf)) = msg_in.union {
+-                if !key.is_empty() && rf.licence_key != key {
+-                    log::warn!("Relay authentication failed from {} - invalid key", addr);
++                if !crate::common::handover_admit(&rf.licence_key, "relay", &rf.uuid, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
+                     return;
+                 }
+                 if !rf.uuid.is_empty() {
+diff --git i/src/rendezvous_server.rs w/src/rendezvous_server.rs
+index cdf6938..7ed3842 100644
+--- i/src/rendezvous_server.rs
++++ w/src/rendezvous_server.rs
+@@ -354,6 +354,9 @@ impl RendezvousServer {
+             match msg_in.union {
+                 Some(rendezvous_message::Union::RegisterPeer(rp)) => {
+                     // B registered
++                    if !crate::common::handover_admit(&rp.licence_key, "register", &rp.id, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                        return Ok(());
++                    }
+                     if !rp.id.is_empty() {
+                         log::trace!("New peer registered: {:?} {:?}", &rp.id, &addr);
+                         self.update_addr(rp.id, addr, socket).await?;
+@@ -372,6 +375,10 @@ impl RendezvousServer {
+                     if rk.uuid.is_empty() || rk.pk.is_empty() {
+                         return Ok(());
+                     }
++                    let rk_context = format!("{}\n{}\n{}", rk.id, handover_cred::token::b64(&rk.uuid), handover_cred::token::b64(&rk.pk));
++                    if !crate::common::handover_admit(&rk.licence_key, "registerpk", &rk_context, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                        return Ok(());
++                    }
+                     let id = rk.id;
+                     let ip = addr.ip().to_string();
+                     if id.len() < 6 {
+@@ -520,6 +527,9 @@ impl RendezvousServer {
+                     return true;
+                 }
+                 Some(rendezvous_message::Union::RequestRelay(mut rf)) => {
++                    if !crate::common::handover_admit(&rf.licence_key, "relayreq", &format!("{}\n{}", rf.id, rf.uuid), &[handover_cred::Role::Controller], &addr.to_string()) {
++                        return false;
++                    }
+                     // there maybe several attempt, so sink can be none
+                     if let Some(sink) = sink.take() {
+                         self.tcp_punch.lock().await.insert(try_into_v4(addr), sink);
+@@ -534,6 +544,9 @@ impl RendezvousServer {
+                     return true;
+                 }
+                 Some(rendezvous_message::Union::RelayResponse(mut rr)) => {
++                    if !crate::common::handover_admit(&rr.licence_key, "relayresp", &rr.uuid, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                        return false;
++                    }
+                     let addr_b = AddrMangle::decode(&rr.socket_addr);
+                     rr.socket_addr = Default::default();
+                     let id = rr.id();
+@@ -554,9 +567,15 @@ impl RendezvousServer {
+                     allow_err!(self.send_to_tcp_sync(msg_out, addr_b).await);
+                 }
+                 Some(rendezvous_message::Union::PunchHoleSent(phs)) => {
++                    if !crate::common::handover_admit(&phs.licence_key, "holesent", &phs.id, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                        return false;
++                    }
+                     allow_err!(self.handle_hole_sent(phs, addr, None).await);
+                 }
+                 Some(rendezvous_message::Union::LocalAddr(la)) => {
++                    if !crate::common::handover_admit(&la.licence_key, "localaddr", &la.id, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                        return false;
++                    }
+                     allow_err!(self.handle_local_addr(la, addr, None).await);
+                 }
+                 Some(rendezvous_message::Union::TestNatRequest(tar)) => {
+@@ -708,8 +727,7 @@ impl RendezvousServer {
+         ws: bool,
+     ) -> ResultType<(RendezvousMessage, Option<SocketAddr>)> {
+         let mut ph = ph;
+-        if !key.is_empty() && ph.licence_key != key {
+-            log::warn!("Authentication failed from {} for peer {} - invalid key", addr, ph.id);
++        if !crate::common::handover_admit(&ph.licence_key, "punch", &ph.id, &[handover_cred::Role::Controller], &addr.to_string()) {
+             let mut msg_out = RendezvousMessage::new();
+             msg_out.set_punch_hole_response(PunchHoleResponse {
+                 failure: punch_hole_response::Failure::LICENSE_MISMATCH.into(),

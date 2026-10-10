@@ -56,6 +56,10 @@ pub enum Error {
     BadLabel,
     BadProof,
     BadFile,
+    BadToken,
+    StaleToken,
+    Replayed,
+    Revoked,
 }
 
 impl fmt::Display for Error {
@@ -69,6 +73,10 @@ impl fmt::Display for Error {
             Error::BadLabel => "label must be 1-64 printable ASCII characters",
             Error::BadProof => "proof of key possession failed",
             Error::BadFile => "unreadable credential file",
+            Error::BadToken => "malformed token",
+            Error::StaleToken => "token timestamp outside the allowed window",
+            Error::Replayed => "token already used",
+            Error::Revoked => "credential revoked",
         })
     }
 }
@@ -235,6 +243,23 @@ impl HolderFile {
         Ok(HolderFile { credential, seed })
     }
 
+    /// One-line form for build settings: `<credential base64>:<seed base64>`.
+    pub fn to_compact(&self) -> String {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        format!("{}:{}", STANDARD.encode(&self.credential), STANDARD.encode(self.seed))
+    }
+
+    pub fn from_compact(text: &str) -> Result<HolderFile, Error> {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let (c, s) = text.trim().split_once(':').ok_or(Error::BadFile)?;
+        let credential = STANDARD.decode(c).map_err(|_| Error::BadFile)?;
+        let seed: [u8; 32] = STANDARD.decode(s).map_err(|_| Error::BadFile)?.try_into().map_err(|_| Error::BadFile)?;
+        if credential.len() > MAX_CREDENTIAL_LEN {
+            return Err(Error::BadFile);
+        }
+        Ok(HolderFile { credential, seed })
+    }
+
     pub fn secret_key(&self) -> SecretKey {
         ed25519::keypair_from_seed(&Seed(self.seed)).1
     }
@@ -270,6 +295,8 @@ pub fn decode_public_key(text: &str) -> Option<PublicKey> {
     let v = STANDARD.decode(text.trim()).ok()?;
     PublicKey::from_slice(&v)
 }
+
+pub mod token;
 
 #[cfg(test)]
 mod tests {
@@ -375,6 +402,8 @@ mod tests {
         let (_, _, seed, cred) = sample();
         let f = HolderFile { credential: cred, seed };
         assert_eq!(HolderFile::from_text(&f.to_text()).unwrap(), f);
+        assert_eq!(HolderFile::from_compact(&f.to_compact()).unwrap(), f);
+        assert_eq!(HolderFile::from_compact("nocolon"), Err(Error::BadFile));
         assert_eq!(HolderFile::from_text("nothing here"), Err(Error::BadFile));
         assert_eq!(HolderFile::from_text("credential=AAAA\nsecret=AAAA"), Err(Error::BadFile));
     }

@@ -740,6 +740,7 @@ impl RendezvousMediator {
             rr.relay_server = relay_server.clone();
             rr.set_id(Config::get_id());
         }
+        rr.licence_key = crate::admission::machine_token("relayresp", &rr.uuid);
         msg_out.set_relay_response(rr);
         socket.send(&msg_out).await?;
         crate::create_relay_connection(
@@ -840,6 +841,7 @@ impl RendezvousMediator {
             format!("{}:{}", local_addr.ip(), local_addr.port()).parse()?;
         let mut msg_out = Message::new();
         msg_out.set_local_addr(LocalAddr {
+            licence_key: crate::admission::machine_token("localaddr", &Config::get_id()),
             id: Config::get_id(),
             socket_addr: AddrMangle::encode(peer_addr).into(),
             local_addr: AddrMangle::encode(local_addr).into(),
@@ -1139,6 +1141,7 @@ impl RendezvousMediator {
         use hbb_common::protobuf::Enum;
         let nat_type = NatType::from_i32(Config::get_nat_type()).unwrap_or(NatType::UNKNOWN_NAT);
         let msg_punch = PunchHoleSent {
+            licence_key: crate::admission::machine_token("holesent", &Config::get_id()),
             socket_addr: ph.socket_addr,
             id: Config::get_id(),
             relay_server,
@@ -1267,7 +1270,12 @@ impl RendezvousMediator {
         let pk = Config::get_key_pair().1;
         let uuid = hbb_common::get_uuid();
         let id = Config::get_id();
+        let licence_key = crate::admission::machine_token(
+            "registerpk",
+            &crate::admission::register_pk_context(&id, &uuid, &pk),
+        );
         msg_out.set_register_pk(RegisterPk {
+            licence_key,
             id,
             uuid: uuid.into(),
             pk: pk.into(),
@@ -1316,6 +1324,7 @@ impl RendezvousMediator {
         let mut msg_out = Message::new();
         let serial = Config::get_serial();
         msg_out.set_register_peer(RegisterPeer {
+            licence_key: crate::admission::machine_token("register", &id),
             id,
             serial,
             ..Default::default()

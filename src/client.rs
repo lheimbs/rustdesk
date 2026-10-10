@@ -907,7 +907,7 @@ impl Client {
             id: peer.to_owned(),
             token: token.to_owned(),
             nat_type: nat_type.into(),
-            licence_key: key.to_owned(),
+            licence_key: crate::admission::controller_token("punch", &peer),
             conn_type: conn_type.into(),
             version: crate::VERSION.to_owned(),
             udp_port: udp_nat_port as _,
@@ -1749,6 +1749,10 @@ impl Client {
                 secure,
             );
             msg_out.set_request_relay(RequestRelay {
+                licence_key: crate::admission::controller_token(
+                    "relayreq",
+                    &crate::admission::relay_request_context(peer, &uuid),
+                ),
                 id: peer.to_owned(),
                 token: token.to_owned(),
                 uuid: uuid.clone(),
@@ -1794,7 +1798,7 @@ impl Client {
         .with_context(|| "Failed to connect to relay server")?;
         let mut msg_out = RendezvousMessage::new();
         msg_out.set_request_relay(RequestRelay {
-            licence_key: key.to_owned(),
+            licence_key: crate::admission::machine_token("relay", &uuid),
             id: peer.to_owned(),
             uuid,
             conn_type: conn_type.into(),
