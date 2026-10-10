@@ -4,7 +4,7 @@
 > (epic #32; every story has a closing comment with evidence). Read in this order: `AGENTS.md` (rules, threat model,
 > audit table with commit hashes, documentation rules), the epic #32 (state, open items, decisions), the runbook #33
 > (commands, procedures, gotchas), then this file: section 2 (measured evidence, newest at the end: 2i-2q), section 3
-> (design decisions D1-D18), section 4 (phase status), section 10 (decisions by date). What is still open: #18 (the
+> (design decisions D1-D19), section 4 (phase status), section 10 (decisions by date). What is still open: #18 (the
 > owner's real signing certificate and a Smart App Control machine), #23 (a second build host), #34 (review and vendor
 > the Flutter git plugins), #35 (dead UI entries and leftover brand strings); stated gaps are listed in the epic.
 > Newest security features and where they live: one-time password gates the prompt (section 2p, `src/server/login_gate.rs`);
@@ -234,7 +234,7 @@ Notes: file transfer exposes everything the logged-in user can read (the listing
 | Authorisation and refusals on a real Windows machine | attended click required per connection; terminal, camera, tunnel refused; clipboard off by default; one-time password rotates (sections 2d, 2f, 2g) |
 | `connections.log` | verified on the real machine (2f) |
 
-**Not done (stated, not hidden):** Windows lock-screen behaviour (testing it needs the owner present: a locked test machine cannot be unlocked remotely); the UAC prompt was only partly tested (2l); tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); Smart App Control machines (signing decision #18).
+**Not done (stated, not hidden; lock screen, UAC, sign-out and sleep were done later, see 2r):** tcpdump-level capture of IPv6/multicast/mDNS (the netns check sees only socket calls); a real hostile peer end to end (covered by unit tests); Smart App Control machines (signing decision #18).
 
 ### 2i. Trimmed Windows build and signing pipeline (test machine, 2026-10-06)
 
@@ -264,7 +264,7 @@ Method: build the same commit several times on the Windows build host (fresh dir
 
 * **Service restart during an accepted session:** restarting the `Handover` service ends the session. The controller then reconnected by itself, and the controlled machine showed a **new Accept prompt**; nothing was accepted without a click, and declining ("Closed manually by the peer") worked. The one-time password had rotated. Known limit: the abruptly ended session has no `closed` line in `connections.log` (the process was killed before it could write one); the next connection starts a new line sequence.
 * **UAC consent prompt (secure desktop) during a session:** the controller *sees* the prompt (same as the local screen). Pointer events reach it (a click expanded the "details" link and the dialog moved), but I did **not** manage to press Yes or No from the controller in four attempts (button press and Enter did not close it). So in this build a remote peer could not be shown to approve an elevation itself; the person at the machine (or ending the requesting process) answers it. Not a guarantee: only these attempts were made; the prompt was cleaned up by ending the requesting process.
-* **Lock screen:** not tested. Locking the test machine without its credentials would strand it; it needs the owner present.
+* **Lock screen:** tested later with the owner present, see 2r.
 
 ### 2m. Server units under a real system manager (2026-10-07)
 
@@ -345,6 +345,27 @@ Unit tests: 3 new ones for the decision (`login_gate`), the 11 handshake tests a
 * Open ports can still be flooded; this decides who is served, not what arrives. Keep the IP allow-list where possible.
 * The issuer key is the crown jewel: keep `ca.key` off the servers and off the controllers, with a strong passphrase and an offline backup.
 
+### 2r. Lock screen, UAC, sign-out, reboot and sleep on the Windows controlled side (2026-10-10, owner present)
+
+Build: Windows installer from HEAD `20bacd681` (one-time password gate and admission active; lab issuer key, signed controller credential), installed in service mode on the test laptop. Every session below went through the full flow: signed controller credential, one-time password, Accept click. The owner locked, unlocked, signed out, rebooted and slept the machine by hand. The laptop's touchpad produces ghost clicks (kb), so every input check used a control or typed text, which a touchpad cannot produce.
+
+| # | Case | Result |
+|---|---|---|
+| L1 | Lock the machine (Win+L) during an accepted session | The controller sees the lock screen (clock, Windows Hello text); the session stays open, no `closed` line |
+| L2 | From the controller: a key to open the sign-in field, then 7 letters, no Enter | **7 dots appeared in the sign-in field on the laptop's own screen**; select-all + Backspace cleared it. The 15 s no-input baseline did not change. A first attempt (click on OK after a typed wrong PIN) agreed, but clicks alone could be ghost input. **Remote keyboard and mouse input is not blocked at the Windows lock or sign-in screen.** The sign-in still needs the Windows password |
+| L3 | While locked, a second connection from the same controller (valid credential and one-time password) | Credential and password checks passed, **no `authorized` line**; the controller stayed on "Connecting...". The Accept prompt cannot be answered while locked (D10 holds). The one-time password was not consumed (it stayed the same after the refused attempt) |
+| L4 | Unlock locally | The first session continued and the controller saw the desktop again; no new prompt |
+| L6 | UAC consent prompt (secure desktop) during a session | The controller sees it. A control with no input left the prompt in place for 20 s. **Pressing No from the controller dismissed it (`consent.exe` gone); pressing Yes from the controller started an elevated command prompt.** This reverses the "could not answer it" result of 2l; a remote peer that was accepted can approve an elevation. The elevated process was ended by hand afterwards |
+| L5 | Sign out while a session is open | The session ended, the service started a fresh `--server` process, the controller reconnected on its own with the old password (now rotated) and was refused twice with `Wrong Password`. Nothing was accepted. No `closed` line is written for the dropped session (same known limit as 2l) |
+| L5b | Reboot (a Windows update restarted the machine during the test) | The session ended without a `closed` line; the service and `--server` came back by themselves; the new one-time password was needed for the next session |
+| L7 | Sleep (Modern Standby, network connected) for about a minute, then wake and unlock | The machine kept answering ping and SSH while asleep; the session stayed open (black view while the display was off) and resumed after wake without a new prompt |
+| Egress | Windows Filtering Platform audit for the whole run; the Linux controller's trace | PASS: only the own server's ports 21115-21117 (UDP/TCP 21116, TCP 21117); the DNS names in the report belong to Windows Update, not to `handover.exe`. Controller: only 21116 and 21117, 0 resolved names |
+| Teardown | Uninstall, leftover check, audit policy, test task | Nothing left behind; audit policy restored |
+
+**Decisions (owner, 2026-10-10): both accepted as they are, documented as known behaviour (D19), not changed.**
+
+**Gotchas for the next run:** a Windows update or its restart ends the session and the VNC tunnel (check the log's `closed` lines and restart the tunnel); Sleep was missing from the Start menu on the test laptop until it was switched on in the vendor control centre (kb); after a sign-in Windows may show a "finish setting up your PC" page that must be dismissed by the owner; a controller left running keeps retrying with the old password and fills the log with `login-refused` lines.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
@@ -379,7 +400,7 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 
 **D9. Name: Handover, app id `me.heimbs.Handover` (user decision 2026-10-04, supersedes the earlier "keep RustDesk").** Rename is now in scope (Phase 7). Effects verified by the Windows audit: most Windows names derive from `APP_NAME` at runtime (service, install dir, pipe, mutex, registry keys, config dirs), so changing `libs/hbb_common/src/config.rs:72` renames most state; the rest is a finite inventory (Phase 7). The exe file must be named `handover.exe` (process lookups use `app_name.to_lowercase()`). `is_custom_client()` becomes true (see Phase 7 caller list): set security-relevant defaults explicitly, do not rely on the "custom client" defaults.
 
-**D10. Service policy (user decision 2026-10-04): keep the root/SYSTEM service on Windows only for availability** (reboot, user switch, UAC/secure desktop, session changes). It never auto-approves: every session still needs a click, and no click is possible at the lock/login screen (CM start is blocked while `is_prelogin()`, `connection.rs:6315-6318` [A]), so there is no login-screen assistance. The Linux controller runs **no service and no local server**.
+**D10. Service policy (user decision 2026-10-04): keep the root/SYSTEM service on Windows only for availability** (reboot, user switch, UAC/secure desktop, session changes). It never auto-approves: every session still needs a click, and no click is possible at the lock/login screen (CM start is blocked while `is_prelogin()`, `connection.rs:6315-6318` [A]), so there is no login-screen assistance; measured in 2r (an already accepted session can still type at the lock screen and answer UAC, D19). The Linux controller runs **no service and no local server**.
 
 **D7. Attended-only (user decision 2026-10-04): no unattended access, no camera, no recording.** Every session needs a local click on the controlled machine, so the helped person is always present and consenting. Consequences (all deletions/hard-offs, Phase 6): permanent password (UI, `--password`, `permanent_password.rs` storage), `hide_cm`, `allow-hide-cm`, auto-approve and the `approve-mode` choice (hard `click`), IP whitelist-as-auth, remote restart (`enable-remote-restart`: a restart ends the session and nothing can reconnect without a person), the Linux root service (D10: kept only on Windows), camera (`ViewCamera`, `nokhwa` dep) and session recording (local `record_*`, `scrap` webm/record paths, `rust-webm` dep, `record_upload`). Temporary one-time password stays as a second factor together with the click [recommended, §10].
 
@@ -400,6 +421,8 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 **D17. Documentation policy.** GitHub issues are the system of record (epic #32, runbook #33, one comment per verified fact); personal details live only in the git-ignored local `kb/`; every push is preceded by `kb/scripts/scrub-check.sh` (AGENTS.md "Documentation rules").
 
 **D18. Test-machine discipline.** Anything installed on the shared physical Windows test machine (service, firewall rules, registry policy, audit policy, certificates, build directories) is removed again and verified; a throwaway signing certificate is removed by thumbprint; long unattended runs are started detached and never share a process-killing cleanup (`pkill` reaches into other network namespaces).
+
+**D19. Locked machine and UAC (owner decision 2026-10-10, measured in 2r): accepted as they are.** A controller that was accepted before the lock may still type and click at the Windows lock and sign-in screen (the Windows password is still needed to sign in), and may answer a UAC consent prompt, including Yes. A *new* connection cannot be accepted while the machine is locked or at the sign-in screen (no click is possible, D10). Why accepted: the Accept click already grants full control of the logged-in session, the supporter is trusted by the owner (signed credential plus one-time password), and blocking elevation would make support tasks impossible. If this changes: gate remote input while `is_locked()` / `is_logon_ui()` (Windows) and on the secure desktop, and re-run L1-L6.
 
 ## 4. Phases
 
@@ -565,7 +588,7 @@ Windows is **in scope** as the controlled side (Phase W): its exe-name licence, 
 
 ## 10. Decisions
 
-**Decisions made after 2026-10-04 (summary; the design is in section 3, D11-D18).**
+**Decisions made after 2026-10-04 (summary; the design is in section 3, D11-D19).**
 - 2026-10-05: the owner enabled issues on the fork and approved the epic and story structure; personal network details must never appear in anything pushed or posted (hence `.env`, the local `kb/` and the scrub check).
 - 2026-10-06: "yes do the trim" (D11); signing: the owner keeps the real certificate, the pipeline is tested with a throwaway one (D12); tickets are the memory, personal details in the local kb (D17).
 - 2026-10-08: "do it" to the one-time password gating the prompt, with the click on top (D15).
