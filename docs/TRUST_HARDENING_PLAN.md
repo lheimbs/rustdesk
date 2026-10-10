@@ -366,6 +366,22 @@ Build: Windows installer from HEAD `20bacd681` (one-time password gate and admis
 
 **Gotchas for the next run:** a Windows update or its restart ends the session and the VNC tunnel (check the log's `closed` lines and restart the tunnel); Sleep was missing from the Start menu on the test laptop until it was switched on in the vendor control centre (kb); after a sign-in Windows may show a "finish setting up your PC" page that must be dismissed by the owner; a controller left running keeps retrying with the old password and fills the log with `login-refused` lines.
 
+### 2s. E1 spike: what each token can reach (2026-10-10, owner present; story E1 of the two-tier epic)
+
+Method: throw-away Python probe (ctypes, no repository code) run on the Windows test machine under three tokens in the console session: a normal user (filtered, medium integrity), an elevated administrator (scheduled task with highest privileges), and SYSTEM with a duplicate of winlogon's token moved into the user's session (what the service does today, started from a task running as SYSTEM). Controls: positive control with an elevated key-logging window that had the focus, a prompt-absent baseline on the normal desktop, and typed-character counts (dots in the sign-in field) instead of clicks (the test machine's touchpad produces ghost input). The probe, its launchers and the machine were cleaned up afterwards.
+
+| Case | Normal user | Elevated administrator | SYSTEM (winlogon token) |
+|---|---|---|---|
+| Type into an **elevated window** (UIPI) | `SendInput` reports 2 events but **nothing arrives** | arrives | arrives |
+| **UAC consent prompt** up: open the input desktop | **access denied** | **access denied** | opens `Winlogon` desktop |
+| UAC prompt: capture (25 pixel reads) | 25 of 25 fail | 25 of 25 fail | 25 of 25 real pixels |
+| UAC prompt: inject a key (Enter, the default "No") | 0 events injected, error 5 | 0 events, error 5 | injected, prompt dismissed |
+| **Lock screen picture and clock** (`LockApp`) | on the **normal desktop**: capture works | capture works | capture works |
+| A key sent to the lock screen | brings up the sign-in field | (same path) | brings up the sign-in field |
+| **Sign-in field** (LogonUI, `Winlogon` desktop): type 5 to 7 letters | **0 dots** (access denied, 0 events) | **0 dots** | **7 dots** |
+
+Conclusions: (1) the elevated-administrator token, which is what upstream portable mode uses, **cannot reach the secure desktop at all**; (2) only SYSTEM with a winlogon token can see and operate UAC prompts and the sign-in field, so the **tier-1 helper must be SYSTEM** (as spec risk R1 allowed for); (3) an administrator-level helper is enough for elevated windows only (UIPI); (4) the lock screen splash is drawn on the normal desktop, so a user-level server can capture it and can even wake the sign-in field with a key, but cannot type into it: tier 0 should treat a locked session as protected (session lock state, not the desktop name) and show the placeholder; (5) a normal user process injecting into an elevated window gets a silent drop, not an error: tier 0 cannot rely on an error code to know input was lost.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

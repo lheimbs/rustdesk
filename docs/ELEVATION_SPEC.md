@@ -37,7 +37,7 @@ Wanted instead (the owner's words: "the AnyDesk way", plus surviving sign-out):
 Functional
 
 * **F1** A new session after Accept is tier 0. A controller cannot start higher.
-* **F2** At tier 0 the lock screen, UAC prompts and the sign-in screen are not visible to the controller (a clear "protected screen" notice instead) and no controller input reaches them.
+* **F2** At tier 0 the lock screen, UAC prompts and the sign-in screen are not visible to the controller (a clear "protected screen" notice instead) and no controller input reaches them. A locked session counts as protected by its session lock state: the lock-screen splash is drawn on the normal desktop and a user-level capture would otherwise show it (measured, plan 2s).
 * **F3** The controller UI has a "Request administrator access" action (toolbar) and shows the state: none, requested, granted (with time left), denied, expired, revoked.
 * **F4** The controlled side shows a prompt for each request (controller name, what it allows, time limit, Allow / Deny, optional "Keep this controller connected through sign-out"), and on Allow triggers the real UAC prompt. A standard user is asked by Windows for an administrator password; that is the authentication.
 * **F5** After the proof succeeds the session becomes tier 1: the controller sees and drives UAC prompts, the lock screen and elevated windows.
@@ -75,7 +75,7 @@ Non-functional / security
 
 * *Keep the SYSTEM server and gate features by policy ("soft tier 0").* Rejected: a policy flag inside a SYSTEM process is not a boundary (file transfer, clipboard, input all run with full rights and every future bug is SYSTEM). Violates S1.
 * *Split brain/worker (SYSTEM brain in session 0, workers per session for capture, input, clipboard, audio).* Gives perfect continuity but every interactive service of the server would need a worker and a protocol (clipboard and audio are not behind the existing proxy). Too large and risky for the gain; the resume grant (F7) gives the user-visible behaviour at far lower cost. Remains the fallback if the user-level server proves unworkable (see risk R2).
-* *Upstream portable mode as is.* It starts the helper with `ShellExecute runas`, i.e. an **administrator** token, which cannot reach the secure desktop (to be measured, story E1), and its logon variant lets the **controller** supply credentials (S6).
+* *Upstream portable mode as is.* It starts the helper with `ShellExecute runas`, i.e. an **administrator** token, which cannot reach the secure desktop (measured in E1, plan 2s), and its logon variant lets the **controller** supply credentials (S6).
 
 ### 4.3 State machine of one session
 
@@ -128,7 +128,7 @@ Unattended access, auto-accept without a prior local click, macOS/Linux controll
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | The privileged helper cannot capture or drive the secure desktop with the chosen token | E1 measures every token; E8/E9 use the result; if SYSTEM-with-winlogon is the only token that works, that is the helper token (the plan already assumes it) |
+| R1 | The privileged helper cannot capture or drive the secure desktop with the chosen token | **Resolved by E1 (plan 2s):** an elevated administrator token cannot open the secure desktop (access denied) and cannot type at the sign-in field; only SYSTEM with a winlogon token can. The tier-1 helper is therefore SYSTEM with the winlogon token, started by the service. |
 | R2 | A user-level `--server` in installed mode hits many upstream assumptions (`is_root`, `is_installed`, config paths, IPC postfixes, tray/CM ownership) | E3 is first and has a go/no-go: if it cannot be made to work in bounded effort, fall back to the brain/worker split for capture and input only (portable proxy reversed) and document it |
 | R3 | DXGI capture as a non-SYSTEM user behaves differently (lock, UAC transitions, GDI fallback) | E5 and the test matrix T-05..T-09 |
 | R4 | The sign broker widens the SYSTEM attack surface | Only two structures are signed, caller checked by SID, session and exe path, rate limit, unit tests with hostile input (E4) |
