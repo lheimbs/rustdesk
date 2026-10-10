@@ -4,6 +4,7 @@ use crate::{
     custom_server::*,
     ipc,
     privacy_mode::win_topmost_window::{self, WIN_TOPMOST_INJECTED_PROCESS_EXE},
+    session_server,
 };
 use base::message_proto::{DisplayInfo, Resolution, WindowsSession};
 use hbb_common::{
@@ -700,6 +701,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     let mut session_id = unsafe { get_current_session(share_rdp()) };
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
+    let mut launched_kind = session_server_kind(session_id);
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
     let mut stored_usid = None;
     loop {
@@ -753,6 +755,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                         stored_usid = Some(session_id);
                                         h_process =
                                             launch_server(session_id, true).await.unwrap_or(NULL);
+                                        launched_kind = session_server_kind(session_id);
                                     }
                                 }
                             }
@@ -779,18 +782,33 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                             close_sent = true;
                         }
                     }
+                    // Someone signed in or out within the same session: the other kind of server is wanted.
+                    let wanted_kind = session_server_kind(session_id);
+                    if wanted_kind != launched_kind && !h_process.is_null() && !close_sent {
+                        log::info!("server kind changed from {:?} to {:?}", launched_kind, wanted_kind);
+                        send_close_async("").await.ok();
+                        close_sent = true;
+                    }
                     let mut exit_code: DWORD = 0;
                     if h_process.is_null()
                         || (GetExitCodeProcess(h_process, &mut exit_code) == TRUE
                             && exit_code != STILL_ACTIVE
                             && CloseHandle(h_process) == TRUE)
                     {
+                        // The handle may be closed already; a failed launch must not leave it dangling.
+                        h_process = NULL;
                         match launch_server(session_id, !close_sent).await {
                             Ok(ptr) => {
                                 h_process = ptr;
+                                launched_kind = session_server_kind(session_id);
                             }
                             Err(err) => {
-                                log::error!("Failed to launch server: {}", err);
+                                hbb_common::throttled_log!(
+                                    Duration::from_secs(10),
+                                    error,
+                                    "Failed to launch server: {}",
+                                    err
+                                );
                             }
                         }
                     }
@@ -826,7 +844,35 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         "\"{}\" --server",
         std::env::current_exe()?.to_str().unwrap_or("")
     );
-    launch_privileged_process(session_id, &cmd)
+    match session_server_kind(session_id) {
+        session_server::ServerKind::SignIn => launch_privileged_process(session_id, &cmd),
+        session_server::ServerKind::User => launch_user_process(session_id, &cmd),
+    }
+}
+
+fn session_server_kind(session_id: DWORD) -> session_server::ServerKind {
+    session_server::server_kind(&get_session_username(session_id))
+}
+
+/// Starts `cmd` in the session with the signed-in user's own (explorer) token, not elevated. Fails if the
+/// shell is not up yet; the service loop retries.
+pub fn launch_user_process(session_id: DWORD, cmd: &str) -> ResultType<HANDLE> {
+    use std::os::windows::ffi::OsStrExt;
+    let wstr: Vec<u16> = std::ffi::OsStr::new(&cmd)
+        .encode_wide()
+        .chain(Some(0).into_iter())
+        .collect();
+    let wstr = wstr.as_ptr();
+    let mut token_pid = 0;
+    let h = unsafe { LaunchProcessWin(wstr, session_id, TRUE, TRUE, &mut token_pid) };
+    if h.is_null() {
+        bail!(
+            "Failed to launch the user server in session {}: {}",
+            session_id,
+            io::Error::last_os_error()
+        );
+    }
+    Ok(h)
 }
 
 pub fn launch_privileged_process(session_id: DWORD, cmd: &str) -> ResultType<HANDLE> {
