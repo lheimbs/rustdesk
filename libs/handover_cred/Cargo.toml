@@ -1,0 +1,10 @@
+[package]
+name = "handover-cred"
+version = "0.1.0"
+edition = "2021"
+description = "Signed credentials for Handover controllers and devices (Ed25519, offline issuer)"
+license = "AGPL-3.0"
+
+[dependencies]
+sodiumoxide = "0.2"
+base64 = "0.22"

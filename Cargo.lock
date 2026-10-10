@@ -3528,6 +3528,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "handover-cred"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "sodiumoxide",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6639,6 +6647,7 @@ dependencies = [
  "foreign-types 0.3.2",
  "fruitbasket",
  "gtk",
+ "handover-cred",
  "hbb_common",
  "hex",
  "hound",
