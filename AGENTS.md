@@ -263,7 +263,7 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
 * `tools/` `build-linux.sh`, `build-windows.ps1`, `sign-windows.ps1`, `trust-windows-cert.ps1`, `egress-check.sh`
   (modes ui, server, down, offline, wrongkey, selftest), `egress-all.sh` (pre-release), `egress-analyze.py`,
   `egress-windows.ps1`, `vendor-forks.sh`, `gen-bridge.sh`.
-* `docs/TRUST_HARDENING_PLAN.md` analysis, decisions D1-D19, measured evidence (2a-2r); `docs/ADMISSION.md` operator's guide for the issuer, credentials, revocation and the error messages; `kb/` (git-ignored, local):
+* `docs/TRUST_HARDENING_PLAN.md` analysis, decisions D1-D20, measured evidence (2a-2s); `docs/ELEVATION_SPEC.md` the two-tier access spec (epic: area elevation); `docs/ADMISSION.md` operator's guide for the issuer, credentials, revocation and the error messages; `kb/` (git-ignored, local):
   the maintainer's environment and scripts.
 
 ### UI Architecture

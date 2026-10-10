@@ -4,7 +4,7 @@
 > (epic #32; every story has a closing comment with evidence). Read in this order: `AGENTS.md` (rules, threat model,
 > audit table with commit hashes, documentation rules), the epic #32 (state, open items, decisions), the runbook #33
 > (commands, procedures, gotchas), then this file: section 2 (measured evidence, newest at the end: 2i-2q), section 3
-> (design decisions D1-D19), section 4 (phase status), section 10 (decisions by date). What is still open: #18 (the
+> (design decisions D1-D20), section 4 (phase status), section 10 (decisions by date). What is still open: #18 (the
 > owner's real signing certificate and a Smart App Control machine), #23 (a second build host), #34 (review and vendor
 > the Flutter git plugins), #35 (dead UI entries and leftover brand strings); stated gaps are listed in the epic.
 > Newest security features and where they live: one-time password gates the prompt (section 2p, `src/server/login_gate.rs`);
@@ -438,7 +438,9 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 
 **D18. Test-machine discipline.** Anything installed on the shared physical Windows test machine (service, firewall rules, registry policy, audit policy, certificates, build directories) is removed again and verified; a throwaway signing certificate is removed by thumbprint; long unattended runs are started detached and never share a process-killing cleanup (`pkill` reaches into other network namespaces).
 
-**D19. Locked machine and UAC (owner decision 2026-10-10, measured in 2r): accepted as they are.** A controller that was accepted before the lock may still type and click at the Windows lock and sign-in screen (the Windows password is still needed to sign in), and may answer a UAC consent prompt, including Yes. A *new* connection cannot be accepted while the machine is locked or at the sign-in screen (no click is possible, D10). Why accepted: the Accept click already grants full control of the logged-in session, the supporter is trusted by the owner (signed credential plus one-time password), and blocking elevation would make support tasks impossible. If this changes: gate remote input while `is_locked()` / `is_logon_ui()` (Windows) and on the secure desktop, and re-run L1-L6.
+**D19. Locked machine and UAC (owner decision 2026-10-10, measured in 2r): accepted as they are; superseded by D20 once the two-tier epic lands.** A controller that was accepted before the lock may still type and click at the Windows lock and sign-in screen (the Windows password is still needed to sign in), and may answer a UAC consent prompt, including Yes. A *new* connection cannot be accepted while the machine is locked or at the sign-in screen (no click is possible, D10). Why accepted: the Accept click already grants full control of the logged-in session, the supporter is trusted by the owner (signed credential plus one-time password), and blocking elevation would make support tasks impossible. If this changes: gate remote input while `is_locked()` / `is_logon_ui()` (Windows) and on the secure desktop, and re-run L1-L6.
+
+**D20. Two-tier access on the Windows controlled side (owner decision 2026-10-10; supersedes D19 for the Windows controlled side).** The owner prefers the model of a session that starts non-elevated, where the controller can request elevation and the person at the machine answers the Windows UAC prompt, and wants it to survive sign-out and user changes. Spec: `docs/ELEVATION_SPEC.md`; epic and stories E1-E14 in the issue tracker (area: elevation). Decisions: (1) the **default `--server` runs as the signed-in user** with the normal token (OS-enforced tier 0), launched by the service, which becomes a supervisor; (2) **tier 1 is a SYSTEM helper with winlogon's token**, started by the service only after a **verified local UAC proof** (an elevated process whose token, exe and session the service checks against a one-time nonce); E1 (2s) showed that no administrator-token helper can reach the secure desktop; (3) **one machine identity for all users**, secrets stay SYSTEM-only behind a sign broker in the service; (4) **resume grant** ("keep connected through sign-out"): in-memory, bounded, bound to controller credential serial and granting user, so sign-out and user switches can be survived without a click, never across a reboot or for a different user; (5) UAC disabled or set to no-prompt means **elevation is refused**; (6) the controller can never supply credentials for elevation (the upstream `logon` branch is removed). Rejected: gating features by policy inside the SYSTEM server (no boundary); a brain/worker split of every interactive service (too large; fallback only if the user-level server proves unworkable, spec risk R2). D19's measurements (2r) are the baseline; D19's "accepted as is" no longer applies once the epic lands.
 
 ## 4. Phases
 
@@ -604,7 +606,7 @@ Windows is **in scope** as the controlled side (Phase W): its exe-name licence, 
 
 ## 10. Decisions
 
-**Decisions made after 2026-10-04 (summary; the design is in section 3, D11-D19).**
+**Decisions made after 2026-10-04 (summary; the design is in section 3, D11-D20).**
 - 2026-10-05: the owner enabled issues on the fork and approved the epic and story structure; personal network details must never appear in anything pushed or posted (hence `.env`, the local `kb/` and the scrub check).
 - 2026-10-06: "yes do the trim" (D11); signing: the owner keeps the real certificate, the pipeline is tested with a throwaway one (D12); tickets are the memory, personal details in the local kb (D17).
 - 2026-10-08: "do it" to the one-time password gating the prompt, with the click on top (D15).
