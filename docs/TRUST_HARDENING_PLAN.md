@@ -419,7 +419,7 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 | L Linux controller | done | #11, #24 |
 | 8 supply chain | done: pins, cargo-deny, every git dependency vendored, Flutter lock, dead crates removed; Flutter git plugins unreviewed | #19, #20, #21, #22, #34 |
 | 9 build and release | Linux and Windows scripted and bit-identical across directories on one host; signing pipeline tested, real certificate is the owner's | #23, #24, #18 |
-| 10 server | pinned commit plus patches 0001-0005; units pass 16/16 under a real system manager; admission (signed credentials) verified; 24 h soak PASS | #25, #37 |
+| 10 server | pinned commit plus patches 0001-0005; units passed 16/16 under a real system manager (re-run pending since the admission environment lines were added); admission (signed credentials) verified; 24 h soak PASS | #25, #37 |
 | 11 acceptance | done on the final binaries (2o) | #26, #27 |
 | 12 admission by signed credentials | done, measured on the real machine and offline (2q) | #37 |
 

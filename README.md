@@ -3,7 +3,8 @@
 > with or endorsed by the RustDesk project or its company. It is built for one purpose: remote support between a few
 > machines you own, against your own open-source `hbbs`/`hbbr` server, with no vendor servers, telemetry, update channel
 > or prebuilt binaries. The goals, audit findings, measurements and work plan are in
-> [`docs/TRUST_HARDENING_PLAN.md`](docs/TRUST_HARDENING_PLAN.md) and the status is tracked in issue #32.
+> [`docs/TRUST_HARDENING_PLAN.md`](docs/TRUST_HARDENING_PLAN.md) and the status is tracked in issue #32. Only controllers and machines signed with the owner's own offline key can
+> connect to the machines handed out or use the servers ([`docs/ADMISSION.md`](docs/ADMISSION.md)).
 >
 > **Licence and source offer:** this software is licensed under the GNU AGPL-3.0 ([`LICENCE`](LICENCE)); the original
 > copyright notices are kept. The complete corresponding source of every build is this repository (third-party forks
