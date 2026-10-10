@@ -145,8 +145,9 @@ impl Gate {
                             .collect();
                     }
                 }
-                // an unreadable list is treated as empty; a missing file means nothing is revoked
-                Err(_) => r.serials.clear(),
+                // a list that cannot be read keeps the last one seen (never un-revokes by accident);
+                // a list that never existed means nothing is revoked
+                Err(_) => {}
             }
         }
         r.serials.contains(&serial)
@@ -256,6 +257,10 @@ mod tests {
         gate.revoked.lock().unwrap().modified = None;
         let t2 = make(&h, "register", "x", NOW);
         assert_eq!(gate.check_at(&t2, "register", "x", &[Role::Device], NOW), Err(Error::Revoked));
-        std::fs::remove_file(dir).ok();
+        // the file disappearing must not un-revoke anybody
+        std::fs::remove_file(&dir).unwrap();
+        gate.revoked.lock().unwrap().checked = None;
+        let t3 = make(&h, "register", "x", NOW);
+        assert_eq!(gate.check_at(&t3, "register", "x", &[Role::Device], NOW), Err(Error::Revoked));
     }
 }
