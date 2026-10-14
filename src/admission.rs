@@ -43,7 +43,20 @@ pub fn controller_token(kind: &str, context: &str) -> String {
 
 /// For messages a machine sends to be registered and relayed: its device credential, else a controller one.
 pub fn machine_token(kind: &str, context: &str) -> String {
+    if Config::is_brokered_identity() {
+        // A user-level server holds no credential of its own; it uses `machine_token_async`.
+        return String::new();
+    }
     make(device().or_else(controller), kind, context)
+}
+
+/// `machine_token` for the server side: where the machine identity is brokered the service makes the token.
+pub async fn machine_token_async(kind: &str, context: &str) -> String {
+    #[cfg(windows)]
+    if Config::is_brokered_identity() {
+        return crate::server::sign_broker::brokered_token(kind, context).await;
+    }
+    machine_token(kind, context)
 }
 
 /// The context both ends use for a public-key registration.

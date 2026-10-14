@@ -46,7 +46,7 @@ use winapi::{
         },
         minwinbase::STILL_ACTIVE,
         processthreadsapi::{
-            GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
+            GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, GetProcessId, OpenProcess,
             OpenProcessToken, ProcessIdToSessionId, PROCESS_INFORMATION, STARTUPINFOW,
         },
         securitybaseapi::{
@@ -698,6 +698,10 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     // Tell the system that the service is running now
     status_handle.set_service_status(next_status)?;
 
+    // The service owns the machine identity (ID, key pair, device credential); user-level servers get
+    // signatures from it, see `server::sign_broker`.
+    let _ = (Config::get_id(), Config::get_key_pair());
+    let mut broker_limit = crate::server::sign_broker::RateLimit::new(Instant::now());
     let mut session_id = unsafe { get_current_session(share_rdp()) };
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
@@ -742,6 +746,15 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                             }
                             ipc::Data::SAS => {
                                 send_sas();
+                            }
+                            ipc::Data::Broker(request) => {
+                                let reply = serve_broker_request(
+                                    request,
+                                    stream.peer_pid(),
+                                    h_process,
+                                    &mut broker_limit,
+                                );
+                                allow_err!(stream.send(&ipc::Data::BrokerReply(reply)).await);
                             }
                             ipc::Data::UserSid(usid) => {
                                 if let Some(usid) = usid {
@@ -848,6 +861,60 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         session_server::ServerKind::SignIn => launch_privileged_process(session_id, &cmd),
         session_server::ServerKind::User => launch_user_process(session_id, &cmd),
     }
+}
+
+/// Answers a sign-broker request, but only for the very server process this service launched: its handle is
+/// held open, so its process id cannot have been reused. Any other process of the user, including another
+/// Handover process, gets nothing signed.
+fn serve_broker_request(
+    request: crate::server::sign_broker::BrokerRequest,
+    peer_pid: Option<u32>,
+    launched: HANDLE,
+    limiter: &mut crate::server::sign_broker::RateLimit,
+) -> crate::server::sign_broker::BrokerReply {
+    use crate::server::sign_broker::{serve, BrokerReply};
+    let launched_pid = if launched.is_null() {
+        0
+    } else {
+        unsafe { GetProcessId(launched) }
+    };
+    if launched_pid == 0 || peer_pid != Some(launched_pid) {
+        hbb_common::throttled_log!(
+            Duration::from_secs(5),
+            warn,
+            "sign broker: refused a caller that is not the server of this session, peer_pid={:?}",
+            peer_pid
+        );
+        return BrokerReply::Denied("the caller is not the server of this session".to_owned());
+    }
+    let (sk, pk) = Config::get_key_pair();
+    let reply = serve(
+        request,
+        &Config::get_id(),
+        &pk,
+        limiter,
+        Instant::now(),
+        |bytes| {
+            let key = hbb_common::sodiumoxide::crypto::sign::SecretKey::from_slice(&sk)?;
+            Some(hbb_common::sodiumoxide::crypto::sign::sign(bytes, &key))
+        },
+        crate::admission::machine_token,
+    );
+    if let BrokerReply::Denied(why) = &reply {
+        hbb_common::throttled_log!(
+            Duration::from_secs(5),
+            warn,
+            "sign broker: refused a request from the server: {}",
+            why
+        );
+    }
+    reply
+}
+
+/// True in a `--server` that is not SYSTEM on a machine with the program installed: it has no identity of its
+/// own and the service must vouch for it (see `server::sign_broker`); without the service it exits.
+pub fn runs_as_installed_user_server() -> bool {
+    !is_root() && is_installed()
 }
 
 fn session_server_kind(session_id: DWORD) -> session_server::ServerKind {

@@ -382,6 +382,34 @@ Method: throw-away Python probe (ctypes, no repository code) run on the Windows 
 
 Conclusions: (1) the elevated-administrator token, which is what upstream portable mode uses, **cannot reach the secure desktop at all**; (2) only SYSTEM with a winlogon token can see and operate UAC prompts and the sign-in field, so the **tier-1 helper must be SYSTEM** (as spec risk R1 allowed for); (3) an administrator-level helper is enough for elevated windows only (UIPI); (4) the lock screen splash is drawn on the normal desktop, so a user-level server can capture it and can even wake the sign-in field with a key, but cannot type into it: tier 0 should treat a locked session as protected (session lock state, not the desktop name) and show the placeholder; (5) a normal user process injecting into an elevated window gets a silent drop, not an error: tier 0 cannot rely on an error code to know input was lost.
 
+### 2t. E4: one machine identity for all users, secrets only in the service (2026-10-14; story E4 of the two-tier epic)
+
+What changed. The Windows `--server` now runs as the signed-in user (E3), so it must not hold the machine's secret key or the device credential. The service keeps both. A user-level server (any `--server` that is not SYSTEM on a machine with the program installed) asks the service over the existing `_service` pipe for three things, and nothing else (`src/server/sign_broker.rs`, hooks in `platform/windows.rs::run_service`):
+
+| Request | What the service checks before answering |
+|---|---|
+| machine ID and public key | caller |
+| signature over the handshake structure `IdPk` | the bytes parse as an `IdPk`, re-serialise to exactly the same bytes (no unknown fields, no non-canonical encoding), carry **this machine's own ID**, a 32-byte ephemeral key, a known key-exchange version and a printable fingerprint of at most 200 bytes |
+| admission token | the kind is one of `register`, `registerpk`, `localaddr`, `holesent`, `relay`, `relayresp`, and the context is about this machine (its own ID; for `registerpk` its own ID and public key; for the relay kinds a uuid-like text); lengths bounded; the token is made with the service's own device credential |
+
+Caller authorisation (stronger than the spec's "SID, session, exe path"): on top of the existing `_service` check (same session or SYSTEM, same exe path) the service accepts a broker request **only from the process it launched itself**. It holds that process's handle, so the process id cannot have been reused. Any other process, including a second `Handover.exe --server` run by the same user, is refused. A token bucket (60 burst, 4 per second, all callers) bounds a flood, and callers that fail authorisation never consume it.
+
+Differences from the spec text (4.6): the ID and public key are delivered over the same authorised IPC instead of a shared `%ProgramData%` directory, so there is no directory ACL to get wrong and no second copy of the identity; the user-level server keeps them only in memory (`Config::set_brokered_identity`), never generates or changes an identity (`get_key_pair`, `get_id`, `set_id`, `update_id` in `hbb_common` are overridden while it is set) and holds an empty secret key. Without the service the server exits and is relaunched (fail closed).
+
+Measured on the Windows test machine (installed build, gated test servers, 2026-10-14):
+
+| Check | Result |
+|---|---|
+| user-level server starts after install | log `machine identity taken from the service`; no key pair generated in the user's profile; the user's config file is byte-for-byte unchanged |
+| machine ID and public key | identical to the ones registered before the change (hbbs row unchanged), so controllers that pinned the key need no re-pinning |
+| registration and relay with brokered tokens | the gated `hbbs`/`hbbr` accepted them; the controller's request reached the machine through the gated relay |
+| handshake signed by the broker | a controller with a signed credential completed the key exchange and reached the login step (`login-refused ... Wrong Password` in the connection log) |
+| hostile caller: a second `Handover.exe --server` by the same user in the same session | the service refused it (`sign broker: refused a caller that is not the server of this session`); it exited after 10 tries with `no machine identity from the service, exiting`; the real server was unaffected |
+| service restart | the server was relaunched and adopted the identity again |
+| unit tests (`cargo test --lib sign_broker`, Linux) | 7 pass: own-identity-only signing; 11 hostile `IdPk` inputs (empty, garbage, other machine, wrong key length, future version, control characters, oversized fingerprint, unknown field, non-canonical encoding, oversize) refused; every token kind and context rule; unknown and oversized kinds; no credential means no token; flood cut off and recovers |
+
+Known limits (not hidden): (1) code that can run inside the legitimate server process (same user, DLL injection) can still ask the broker while that process lives; what it cannot do is take the secret key away, so there is no offline impersonation; (2) the device credential **baked into a build** (`HANDOVER_DEVICE_CRED`) sits in the installed executable and is readable by every local user; only a per-machine `device.cred` in the service's own data folder is out of their reach (measured with `icacls` on the test machine: the folder and the config file grant access to SYSTEM, Administrators and LocalService only, while `Handover.exe` is readable by Users; an elevated administrator can read the secret, which matches the model: administrator is tier 1); (3) the service handles one IPC connection at a time, as before; a flood of authorised-looking connections can delay its session polling by up to a second each (pre-existing), but cannot obtain signatures; (4) a per-user key pair left in a user's profile by a pre-E4 build of E3 is ignored but not deleted (never shipped; delete `%APPDATA%\<app>\config` if present); (5) not yet exercised: two real Windows users, and the sign-in server (SYSTEM, not brokered, unchanged code path) against the user-level server after a sign-out (needs the owner present); the egress scripts have not been re-run on this build (E13).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

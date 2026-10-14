@@ -72,6 +72,7 @@ mod connection;
 mod connection_log;
 mod login_gate;
 pub(crate) mod session_server;
+pub(crate) mod sign_broker;
 mod login_failure_check;
 pub(crate) mod port_forward_mux;
 pub mod display_service;
@@ -251,10 +252,9 @@ pub async fn create_tcp_connection(
 async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()> {
     let (sk, pk) = Config::get_key_pair();
     let _ = secure;
-    if pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
-        let mut sk_ = [0u8; sign::SECRETKEYBYTES];
-        sk_[..].copy_from_slice(&sk);
-        let sk = sign::SecretKey(sk_);
+    if pk.len() == sign::PUBLICKEYBYTES
+        && (Config::is_brokered_identity() || sk.len() == sign::SECRETKEYBYTES)
+    {
         let mut msg_out = Message::new();
         let (our_pk_b, our_sk_b) = box_::gen_keypair();
         // On a WebRTC transport, bind our DTLS certificate fingerprint to our signed identity so
@@ -274,20 +274,17 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
         } else {
             tcp::KX_VERSION_LATEST
         };
+        let id_pk = IdPk {
+            id: Config::get_id(),
+            pk: Bytes::from(our_pk_b.0.to_vec()),
+            dtls_fingerprint,
+            kx_version: advertised,
+            ..Default::default()
+        }
+        .write_to_bytes()
+        .unwrap_or_default();
         msg_out.set_signed_id(SignedId {
-            id: sign::sign(
-                &IdPk {
-                    id: Config::get_id(),
-                    pk: Bytes::from(our_pk_b.0.to_vec()),
-                    dtls_fingerprint,
-                    kx_version: advertised,
-                    ..Default::default()
-                }
-                .write_to_bytes()
-                .unwrap_or_default(),
-                &sk,
-            )
-            .into(),
+            id: sign_broker::sign_identity(&id_pk, &sk).await?.into(),
             ..Default::default()
         });
         timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
@@ -400,7 +397,7 @@ async fn create_relay_connection_(
     )
     .await?;
     let mut msg_out = RendezvousMessage::new();
-    let licence_key = crate::admission::machine_token("relay", &uuid);
+    let licence_key = crate::admission::machine_token_async("relay", &uuid).await;
     msg_out.set_request_relay(RequestRelay {
         licence_key,
         uuid,
@@ -662,6 +659,10 @@ pub async fn start_server(is_server: bool, no_server: bool) {
     });
 
     if is_server {
+        #[cfg(windows)]
+        if crate::platform::windows::runs_as_installed_user_server() {
+            sign_broker::adopt_machine_identity().await;
+        }
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {

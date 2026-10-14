@@ -71,6 +71,7 @@ lazy_static::lazy_static! {
     pub static ref EXE_RENDEZVOUS_SERVER: RwLock<String> = Default::default();
     pub static ref APP_NAME: RwLock<String> = RwLock::new("Handover".to_owned());
     static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
+    static ref BROKERED_IDENTITY: RwLock<Option<(String, Vec<u8>)>> = Default::default();
     static ref USER_DEFAULT_CONFIG: RwLock<(UserDefaultConfig, Instant)> = RwLock::new((UserDefaultConfig::load(), Instant::now()));
     pub static ref NEW_STORED_PEER_CONFIG: Mutex<HashSet<String>> = Default::default();
     pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
@@ -1040,6 +1041,9 @@ impl Config {
     }
 
     pub fn set_id(id: &str) {
+        if Self::is_brokered_identity() {
+            return;
+        }
         let mut config = CONFIG.write().unwrap();
         if id == config.id {
             return;
@@ -1170,7 +1174,28 @@ impl Config {
         config.store();
     }
 
+    /// The machine's ID and public key come from the service; this process never holds the secret key
+    /// and can neither generate nor change an identity.
+    pub fn set_brokered_identity(id: String, pk: Vec<u8>) {
+        *BROKERED_IDENTITY.write().unwrap() = Some((id, pk));
+    }
+
+    pub fn is_brokered_identity() -> bool {
+        BROKERED_IDENTITY.read().unwrap().is_some()
+    }
+
+    fn brokered_key_pair() -> Option<KeyPair> {
+        BROKERED_IDENTITY
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|(_, pk)| (Vec::new(), pk.clone()))
+    }
+
     pub fn get_key_pair() -> KeyPair {
+        if let Some(p) = Self::brokered_key_pair() {
+            return p;
+        }
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
         let mut lock = KEY_PAIR.lock().unwrap();
@@ -1194,12 +1219,18 @@ impl Config {
     }
 
     pub fn get_cached_pk() -> Option<Vec<u8>> {
+        if let Some(p) = Self::brokered_key_pair() {
+            return Some(p.1);
+        }
         KEY_PAIR.lock().unwrap().clone().map(|k| k.1)
     }
 
     /// Get existing key pair without generating a new one.
     /// Returns None if no key pair exists in cache or config file.
     pub fn get_existing_key_pair() -> Option<KeyPair> {
+        if let Some(p) = Self::brokered_key_pair() {
+            return Some(p);
+        }
         let mut lock = KEY_PAIR.lock().unwrap();
         if let Some(p) = lock.as_ref() {
             return Some(p.clone());
@@ -1255,6 +1286,9 @@ impl Config {
     }
 
     pub fn get_id() -> String {
+        if let Some((id, _)) = BROKERED_IDENTITY.read().unwrap().as_ref() {
+            return id.clone();
+        }
         let mut id = CONFIG.read().unwrap().id.clone();
         if id.is_empty() {
             if let Some(tmp) = Config::gen_id() {
@@ -1266,6 +1300,9 @@ impl Config {
     }
 
     pub fn get_id_or(b: String) -> String {
+        if let Some((id, _)) = BROKERED_IDENTITY.read().unwrap().as_ref() {
+            return id.clone();
+        }
         let a = CONFIG.read().unwrap().id.clone();
         if a.is_empty() {
             b
@@ -1331,6 +1368,10 @@ impl Config {
     }
 
     pub fn update_id() {
+        if Self::is_brokered_identity() {
+            log::warn!("the machine ID is owned by the service and cannot be changed here");
+            return;
+        }
         // to-do: how about if one ip register a lot of ids?
         let id = Self::get_id();
         let mut rng = rand::thread_rng();

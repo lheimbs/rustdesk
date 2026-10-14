@@ -254,7 +254,8 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
   offline issuer tool `handover-ca` (`init`, `issue`, `inspect`, `compact`); copied into the server build, not patched.
 * `src/controller_auth.rs` controller credential check on the controlled side and attach on the controller;
   `src/admission.rs` tokens for the rendezvous and relay servers; `src/server/login_gate.rs` the pure decision
-  (trusted controller, password, prompt); `src/server/connection_log.rs` the local connection log.
+  (trusted controller, password, prompt); `src/server/connection_log.rs` the local connection log;
+  `src/server/sign_broker.rs` the service's sign broker (a user-level Windows server gets its identity, handshake signature and admission tokens from the service, plan 2t).
 * `src/hbbs_http.rs`, `src/updater.rs` same-signature stubs of removed network features.
 * `libs/winres/` winres with sorted output (reproducible Windows resources, `HANDOVER_PATCH.md`).
 * `third_party/` every git-sourced dependency, vendored by `tools/vendor-forks.sh`; never edited by hand.

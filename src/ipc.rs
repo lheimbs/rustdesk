@@ -390,6 +390,10 @@ pub enum Data {
     Close,
     #[cfg(windows)]
     SAS,
+    #[cfg(windows)]
+    Broker(crate::server::sign_broker::BrokerRequest),
+    #[cfg(windows)]
+    BrokerReply(crate::server::sign_broker::BrokerReply),
     UserSid(Option<u32>),
     OnlineStatus(Option<(i64, bool)>),
     Config((String, Option<String>)),

@@ -40,6 +40,11 @@ Copy the controller credential to the controller machine (`controller.cred` in t
 device credential only if you want to revoke that customer separately (file in their config directory); otherwise the baked
 one is enough. The label is what appears in the controlled machine's `connections.log` next to the serial.
 
+On Windows the service makes the admission tokens for the signed-in user's server (the sign broker, plan section 2t), so a
+per-machine `device.cred` goes into the **service's** config directory (`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\<app>\config`,
+readable by SYSTEM, Administrators and LocalService only), not into a user's folder. The credential baked into a build is part of
+the installed program and every local user can read it; the file in the service's folder is the only copy they cannot.
+
 ## Renewing, revoking, rotating
 
 * **Renew** before expiry: issue a new credential with the same label and replace the file. A machine's clock may be off by up
