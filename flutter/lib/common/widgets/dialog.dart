@@ -1159,155 +1159,17 @@ void showWaitUacDialog(
 // Another username && password dialog?
 void showRequestElevationDialog(
     SessionID sessionId, OverlayDialogManager dialogManager) {
-  RxString groupValue = ''.obs;
-  RxString errUser = ''.obs;
-  RxString errPwd = ''.obs;
-  TextEditingController userController = TextEditingController();
-  TextEditingController pwdController = TextEditingController();
-
-  void onRadioChanged(String? value) {
-    if (value != null) {
-      groupValue.value = value;
-    }
-  }
-
-  // TODO get from theme
-  final double fontSizeNote = 13.00;
-
-  Widget OptionRequestPermissions = Obx(
-    () => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Radio(
-          visualDensity: VisualDensity(horizontal: -4, vertical: -4),
-          value: '',
-          groupValue: groupValue.value,
-          onChanged: onRadioChanged,
-        ).marginOnly(right: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InkWell(
-                hoverColor: Colors.transparent,
-                onTap: () => groupValue.value = '',
-                child: Text(
-                  translate('Ask the remote user for authentication'),
-                ),
-              ).marginOnly(bottom: 10),
-              Text(
-                translate('Choose this if the remote account is administrator'),
-                style: TextStyle(fontSize: fontSizeNote),
-              ),
-            ],
-          ).marginOnly(top: 3),
-        ),
-      ],
-    ),
-  );
-
-  Widget OptionCredentials = Obx(
-    () => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Radio(
-          visualDensity: VisualDensity(horizontal: -4, vertical: -4),
-          value: 'logon',
-          groupValue: groupValue.value,
-          onChanged: onRadioChanged,
-        ).marginOnly(right: 10),
-        Expanded(
-          child: InkWell(
-            hoverColor: Colors.transparent,
-            onTap: () => onRadioChanged('logon'),
-            child: Text(
-              translate('Transmit the username and password of administrator'),
-            ),
-          ).marginOnly(top: 4),
-        ),
-      ],
-    ),
-  );
-
-  Widget UacNote = Container(
-    padding: EdgeInsets.fromLTRB(10, 8, 8, 8),
-    decoration: BoxDecoration(
-      color: MyTheme.currentThemeMode() == ThemeMode.dark
-          ? Color.fromARGB(135, 87, 87, 90)
-          : Colors.grey[100],
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.grey),
-    ),
-    child: Row(
-      children: [
-        Icon(Icons.info_outline_rounded, size: 20).marginOnly(right: 10),
-        Expanded(
-          child: Text(
-            translate('still_click_uac_tip'),
-            style: TextStyle(
-                fontSize: fontSizeNote, fontWeight: FontWeight.normal),
-          ),
-        )
-      ],
-    ),
-  );
-
-  var content = Obx(
-    () => Column(
-      children: [
-        OptionRequestPermissions.marginOnly(bottom: 15),
-        OptionCredentials,
-        Offstage(
-          offstage: 'logon' != groupValue.value,
-          child: Column(
-            children: [
-              UacNote.marginOnly(bottom: 10),
-              DialogTextField(
-                controller: userController,
-                title: translate('Username'),
-                hintText: translate('elevation_username_tip'),
-                prefixIcon: DialogTextField.kUsernameIcon,
-                errorText: errUser.isEmpty ? null : errUser.value,
-              ),
-              PasswordWidget(
-                controller: pwdController,
-                autoFocus: false,
-                errorText: errPwd.isEmpty ? null : errPwd.value,
-              ),
-            ],
-          ).marginOnly(left: stateGlobal.isPortrait.isFalse ? 35 : 0),
-        ).marginOnly(top: 10),
-      ],
-    ),
-  );
-
   dialogManager.dismissAll();
   dialogManager.show(tag: '$sessionId-request-elevation',
       (setState, close, context) {
     void submit() {
-      if (groupValue.value == 'logon') {
-        if (userController.text.isEmpty) {
-          errUser.value = translate('Empty Username');
-          return;
-        }
-        if (pwdController.text.isEmpty) {
-          errPwd.value = translate('Empty Password');
-          return;
-        }
-        bind.sessionElevateWithLogon(
-            sessionId: sessionId,
-            username: userController.text,
-            password: pwdController.text);
-      } else {
-        bind.sessionElevateDirect(sessionId: sessionId);
-      }
+      bind.sessionElevateDirect(sessionId: sessionId);
       close();
-      showWaitUacDialog(sessionId, dialogManager, "wait-uac");
     }
 
     return CustomAlertDialog(
-      title: Text(translate('Request Elevation')),
-      content: content,
+      title: Text(translate('Request administrator access')),
+      content: Text(translate('request_administrator_access_tip')),
       actions: [
         dialogButton(
           'Cancel',

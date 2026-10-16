@@ -101,6 +101,7 @@ mod audio_playback_recovery;
 mod audio_state_tests;
 pub mod file_trait;
 pub mod helper;
+pub mod elevation;
 pub mod io_loop;
 pub mod screenshot;
 
@@ -4931,7 +4932,7 @@ pub enum Data {
     ResumeJob((i32, bool)),
     RecordScreen(bool),
     ElevateDirect,
-    ElevateWithLogon(String, String),
+    ElevationDrop,
     NewVoiceCall,
     CloseVoiceCall,
     ContinueInsecureConnection,

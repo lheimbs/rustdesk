@@ -1183,20 +1183,18 @@ impl<T: InvokeUiSession> Remote<T> {
                 msg.set_misc(misc);
                 allow_err!(peer.send(&msg).await);
                 self.elevation_requested = true;
+                self.handler.elevation_status(
+                    elevation_status::State::Requested as i32,
+                    0,
+                    "",
+                );
             }
-            Data::ElevateWithLogon(username, password) => {
-                let mut request = ElevationRequest::new();
-                request.set_logon(ElevationRequestWithLogon {
-                    username,
-                    password,
-                    ..Default::default()
-                });
+            Data::ElevationDrop => {
                 let mut misc = Misc::new();
-                misc.set_elevation_request(request);
+                misc.set_elevation_drop(true);
                 let mut msg = Message::new();
                 msg.set_misc(misc);
                 allow_err!(peer.send(&msg).await);
-                self.elevation_requested = true;
             }
             Data::NewVoiceCall => {
                 let msg = new_voice_call_request(true);
@@ -2227,6 +2225,9 @@ impl<T: InvokeUiSession> Remote<T> {
                             self.handler
                                 .msgbox("elevation-error", "Elevation Error", &err, "");
                         }
+                    }
+                    Some(misc::Union::ElevationStatus(status)) => {
+                        super::elevation::on_status(&self.handler, &status);
                     }
                     Some(misc::Union::PortableServiceRunning(b)) => {
                         self.handler.portable_service_running(b);

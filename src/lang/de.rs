@@ -784,5 +784,15 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.", ""),
         ("Unsafe file name", ""),
         ("protected_screen_tip", "Der entfernte Bildschirm ist geschützt (gesperrt, Anmeldebildschirm oder eine Administrator-Abfrage). Er wird nicht angezeigt und Ihre Eingaben erreichen ihn nicht. Die Ansicht kommt von selbst zurück, sobald der Bildschirm entsperrt ist."),
+        ("Request administrator access", "Administratorzugriff anfordern"),
+        ("Drop administrator access", "Administratorzugriff abgeben"),
+        ("request_administrator_access_tip", "Die Person am entfernten Gerät muss zustimmen und die Windows-Abfrage beantworten. Bis dahin hat die Sitzung nur die Rechte des angemeldeten Benutzers."),
+        ("Administrator access", "Administratorzugriff"),
+        ("Administrator access requested", "Administratorzugriff angefordert"),
+        ("Administrator access was denied", "Der Administratorzugriff wurde abgelehnt"),
+        ("Administrator access has expired", "Der Administratorzugriff ist abgelaufen"),
+        ("Administrator access was ended on the remote machine", "Der Administratorzugriff wurde am entfernten Gerät beendet"),
+        ("Administrator access is not available on this machine", "Administratorzugriff ist auf diesem Gerät nicht verfügbar"),
+        ("Credentials from the controller are not accepted", "Zugangsdaten vom steuernden Gerät werden nicht angenommen"),
     ].iter().cloned().collect();
 }

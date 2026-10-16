@@ -803,6 +803,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       BuildContext context, _ToolbarEdge edge, bool isHorizontal) {
     final List<Widget> toolbarItems = [];
     toolbarItems.add(_PinMenu(state: widget.state));
+    toolbarItems.add(_ElevationBadge(ffi: widget.ffi));
     toolbarItems.add(Obx(() {
       final privacyModeState = PrivacyModeState.find(widget.id);
       if ((privacyModeState.isEmpty ||
@@ -949,6 +950,44 @@ class _PinMenu extends StatelessWidget {
             : _ToolbarTheme.hoverInactiveColor,
       ),
     );
+  }
+}
+
+/// Shows a pending request and a granted administrator access with the time left (elevation spec F3).
+class _ElevationBadge extends StatelessWidget {
+  final FFI ffi;
+  const _ElevationBadge({Key? key, required this.ffi}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final model = ffi.elevationModel;
+      final String text;
+      switch (model.state.value) {
+        case ElevationState.requested:
+          text = translate('Administrator access requested');
+          break;
+        case ElevationState.granted:
+          final s = model.secondsLeft.value;
+          text =
+              '${translate('Administrator access')} ${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+          break;
+        default:
+          return const Offstage();
+      }
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: model.state.value == ElevationState.granted
+              ? Colors.orange
+              : _ToolbarTheme.inactiveColor,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(text,
+            style: const TextStyle(color: Colors.white, fontSize: 12)),
+      );
+    });
   }
 }
 

@@ -1055,6 +1055,18 @@ impl InvokeUiSession for FlutterHandler {
         );
     }
 
+    fn elevation_status(&self, state: i32, expires_in_secs: u32, reason: &str) {
+        self.push_event(
+            "elevation_status",
+            &[
+                ("state", state.to_string().as_str()),
+                ("expires_in_secs", expires_in_secs.to_string().as_str()),
+                ("reason", reason),
+            ],
+            &[],
+        );
+    }
+
     fn on_voice_call_started(&self) {
         self.push_event::<&str>("on_voice_call_started", &[], &[]);
     }

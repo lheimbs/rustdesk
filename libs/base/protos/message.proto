@@ -87,6 +87,8 @@ message LoginRequest {
   // Handover: credential signed by the owner's issuer and a proof that this login holds its key.
   bytes controller_cred = 18;
   bytes controller_proof = 19;
+  // Handover: proof of a resume grant (elevation spec F7, story E10); empty for a normal login.
+  bytes resume_token = 20;
 }
 
 message Terminal {
@@ -793,6 +795,24 @@ message ElevationRequest {
   }
 }
 
+// Handover: administrator access (tier 1) of this session, sent by the controlled side.
+message ElevationStatus {
+  enum State {
+    None = 0;
+    Requested = 1;
+    Granted = 2;
+    Denied = 3;
+    Expired = 4;
+    Revoked = 5;
+  }
+  State state = 1;
+  // Seconds left while granted.
+  uint32 expires_in_secs = 2;
+  string reason = 3;
+  // Sent once with a grant that may be resumed after sign-out (story E10).
+  bytes resume_secret = 4;
+}
+
 message SwitchSidesRequest {
   bytes uuid = 1;
 }
@@ -873,6 +893,9 @@ message Misc {
     // Handover: the controlled screen is protected (locked, sign-in screen, UAC prompt) and not shown; false
     // withdraws the notice.
     bool protected_screen = 40;
+    ElevationStatus elevation_status = 41;
+    // Handover: the controller gives up administrator access.
+    bool elevation_drop = 42;
   }
 }
 

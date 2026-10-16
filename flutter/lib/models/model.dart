@@ -409,6 +409,10 @@ class FfiModel with ChangeNotifier {
         closeConnection(id: peer_id);
       } else if (name == 'portable_service_running') {
         _handlePortableServiceRunning(peerId, evt);
+      } else if (name == 'elevation_status') {
+        parent.target?.elevationModel.onStatus(
+            int.tryParse(evt['state'].toString()) ?? 0,
+            int.tryParse(evt['expires_in_secs'].toString()) ?? 0);
       } else if (name == 'on_url_scheme_received') {
         // currently comes from "_url" ipc of mac and dbus of linux
         onUrlSchemeReceived(evt);
@@ -3996,18 +4000,46 @@ class RecordingModel with ChangeNotifier {
   }
 }
 
+/// Administrator access of the session as the controlled side reports it (index = `ElevationStatus.State`).
+enum ElevationState { none, requested, granted, denied, expired, revoked }
+
 class ElevationModel with ChangeNotifier {
   WeakReference<FFI> parent;
   ElevationModel(this.parent);
   bool _running = false;
   bool _canElevate = false;
-  bool get showRequestMenu => _canElevate && !_running;
+  final state = ElevationState.none.obs;
+  final secondsLeft = 0.obs;
+  Timer? _countdown;
+  bool get showRequestMenu =>
+      _canElevate &&
+      !_running &&
+      state.value != ElevationState.requested &&
+      state.value != ElevationState.granted;
+  bool get showDropMenu => state.value == ElevationState.granted;
   onPeerInfo(PeerInfo pi) {
-    _canElevate = pi.platform == kPeerPlatformWindows && pi.sasEnabled == false;
+    _canElevate = pi.platform == kPeerPlatformWindows;
     _running = false;
+    onStatus(ElevationState.none.index, 0);
   }
 
   onPortableServiceRunning(bool running) => _running = running;
+
+  onStatus(int index, int expiresInSecs) {
+    _countdown?.cancel();
+    _countdown = null;
+    state.value = index >= 0 && index < ElevationState.values.length
+        ? ElevationState.values[index]
+        : ElevationState.none;
+    secondsLeft.value =
+        state.value == ElevationState.granted ? expiresInSecs : 0;
+    if (secondsLeft.value > 0) {
+      _countdown = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (secondsLeft.value > 0) secondsLeft.value -= 1;
+        if (secondsLeft.value == 0) t.cancel();
+      });
+    }
+  }
 }
 
 // The index values of `ConnType` are same as rust protobuf.

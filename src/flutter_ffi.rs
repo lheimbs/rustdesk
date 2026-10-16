@@ -941,9 +941,9 @@ pub fn session_elevate_direct(session_id: SessionID) {
     }
 }
 
-pub fn session_elevate_with_logon(session_id: SessionID, username: String, password: String) {
+pub fn session_elevation_drop(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.elevate_with_logon(username, password);
+        session.elevation_drop();
     }
 }
 

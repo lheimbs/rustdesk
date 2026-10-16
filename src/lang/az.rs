@@ -784,5 +784,15 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.", ""),
         ("Unsafe file name", ""),
         ("protected_screen_tip", ""),
+        ("Request administrator access", ""),
+        ("Drop administrator access", ""),
+        ("request_administrator_access_tip", ""),
+        ("Administrator access", ""),
+        ("Administrator access requested", ""),
+        ("Administrator access was denied", ""),
+        ("Administrator access has expired", ""),
+        ("Administrator access was ended on the remote machine", ""),
+        ("Administrator access is not available on this machine", ""),
+        ("Credentials from the controller are not accepted", ""),
     ].iter().cloned().collect();
 }

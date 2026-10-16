@@ -339,9 +339,16 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
       ffi.elevationModel.showRequestMenu) {
     v.add(
       TTextMenu(
-          child: Text(translate('Request Elevation')),
+          child: Text(translate('Request administrator access')),
           onPressed: () =>
               showRequestElevationDialog(sessionId, ffi.dialogManager)),
+    );
+  }
+  if (isDefaultConn && ffi.elevationModel.showDropMenu) {
+    v.add(
+      TTextMenu(
+          child: Text(translate('Drop administrator access')),
+          onPressed: () => bind.sessionElevationDrop(sessionId: sessionId)),
     );
   }
   // osPassword

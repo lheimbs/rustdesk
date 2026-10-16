@@ -3854,20 +3854,15 @@ impl Connection {
                             }
                         }
                     }
-                    #[cfg(windows)]
-                    Some(misc::Union::ElevationRequest(r)) => match r.union {
-                        Some(elevation_request::Union::Direct(_)) => {
-                            self.handle_elevation_request(portable_client::StartPara::Direct)
-                                .await;
-                        }
-                        Some(elevation_request::Union::Logon(r)) => {
-                            self.handle_elevation_request(portable_client::StartPara::Logon(
-                                r.username, r.password,
-                            ))
-                            .await;
-                        }
-                        _ => {}
-                    },
+                    Some(misc::Union::ElevationRequest(r)) => {
+                        let status = super::elevation::answer_request(&r);
+                        self.send(super::elevation::message(status)).await;
+                        self.update_auto_disconnect_timer();
+                    }
+                    Some(misc::Union::ElevationDrop(_)) => {
+                        let status = super::elevation::answer_drop();
+                        self.send(super::elevation::message(status)).await;
+                    }
                     Some(misc::Union::AudioFormat(format)) => {
                         if !self.disable_audio {
                             // Drop the audio sender previously.
@@ -4568,28 +4563,6 @@ impl Connection {
         lock.subscribe(&new_service_name, self.inner.clone(), true);
         self.display_idx = display_idx;
         true
-    }
-
-    #[cfg(windows)]
-    async fn handle_elevation_request(&mut self, para: portable_client::StartPara) {
-        let mut err;
-        if !self.keyboard {
-            err = "No permission".to_string();
-        } else {
-            err = "No need to elevate".to_string();
-            if !crate::platform::is_installed() && !portable_client::running() {
-                err = portable_client::start_portable_service(para)
-                    .err()
-                    .map_or("".to_string(), |e| e.to_string());
-            }
-        }
-
-        let mut misc = Misc::new();
-        misc.set_elevation_response(err);
-        let mut msg = Message::new();
-        msg.set_misc(misc);
-        self.send(msg).await;
-        self.update_auto_disconnect_timer();
     }
 
     async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) {

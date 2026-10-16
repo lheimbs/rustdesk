@@ -1489,8 +1489,8 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::ElevateDirect);
     }
 
-    pub fn elevate_with_logon(&self, username: String, password: String) {
-        self.send(Data::ElevateWithLogon(username, password));
+    pub fn elevation_drop(&self) {
+        self.send(Data::ElevationDrop);
     }
 
     #[cfg(any(target_os = "android", target_os = "ios", not(feature = "flutter")))]
@@ -1739,6 +1739,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn cancel_msgbox(&self, tag: &str);
     fn switch_back(&self, id: &str);
     fn portable_service_running(&self, running: bool);
+    fn elevation_status(&self, _state: i32, _expires_in_secs: u32, _reason: &str) {}
     fn on_voice_call_started(&self);
     fn on_voice_call_closed(&self, reason: &str);
     fn on_voice_call_waiting(&self);
