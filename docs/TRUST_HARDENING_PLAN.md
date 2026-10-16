@@ -514,7 +514,8 @@ Measured on the Windows test machine (installed build, gated test servers, signe
 | T-10 (UAC part) | a UAC prompt started locally is visible in the controller's view (no protected-screen notice); the controller clicked No with nobody at the machine: the prompt was gone, no new elevated process |
 | local Stop | the helper process is gone at once (service log `helper ... stopped`); the controller's typing no longer reaches the elevated window: back to tier 0 without reconnecting |
 | forged proxy: a normal-user process keeps 4 instances of the proxy pipe name open before the grant | the user could create them; the server's own listener then failed ("access denied"); the helper connected to the squatter's instance and exited after 0.3 s, well before the 3 s handshake timeout, i.e. on the owner check; the grant ended and the controller was told "Administrator access was ended on the remote machine"; the squatter received nothing it could use |
-| uninstall | found `C:\ProgramData\<app>\portable_service_shmem` left behind (T-28): the uninstall script now removes `%PROGRAMDATA%\<app>` |
+| uninstall | found `C:\ProgramData\<app>\portable_service_shmem` left behind (T-28): the uninstall script now removes `%PROGRAMDATA%\<app>`; verified on the next build: nothing left (service, files, ProgramData folder, tasks, shortcuts) |
+| T-18 for the helper: the controller disconnects during a grant | the helper is stopped at once (`elevation: ended ...`, `helper ... stopped`), no `--portable-service` process left |
 
 Not yet run: the lock screen at tier 1 and T-24 (sleep and wake) need the owner at the machine; T-10's "input reaches an elevated window" is covered by T-02 inverse.
 
