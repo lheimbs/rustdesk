@@ -782,6 +782,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("relay-fallback-delay-tip", "Πόσο χρόνο περιμένει μια ήδη ενεργή σύνδεση αναμεταδότη την απευθείας σύνδεση WebRTC πριν χρησιμοποιηθεί στη θέση της. Αυξήστε το για να δώσετε σε μια αργή απευθείας σύνδεση περισσότερο χρόνο. Μειώστε το για ταχύτερη επιστροφή στον αναμεταδότη σε δίκτυα όπου δεν είναι δυνατή η απευθείας σύνδεση. Αφήστε το κενό για την προεπιλογή των 2.5 δευτερολέπτων."),
         ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", ""),
         ("The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.", ""),
-        ("Unsafe file name", "")
+        ("Unsafe file name", ""),
+        ("protected_screen_tip", ""),
     ].iter().cloned().collect();
 }

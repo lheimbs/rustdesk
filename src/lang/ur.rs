@@ -782,7 +782,8 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("relay-fallback-delay-tip", "پہلے سے قائم ریلے کنکشن براہ راست WebRTC کنکشن کا کتنی دیر انتظار کرتا ہے، اس کے بعد اس کی جگہ استعمال ہوتا ہے۔ سست براہ راست کنکشن کو مزید وقت دینے کے لیے بڑھائیں؛ ان نیٹ ورکس پر جہاں براہ راست کنکشن ممکن نہیں، جلد ریلے پر جانے کے لیے کم کریں۔ پہلے سے طے شدہ 2.5 سیکنڈ کے لیے خالی چھوڑ دیں۔"),
         ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", ""),
         ("The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.", ""),
-        ("Unsafe file name", "")
+        ("Unsafe file name", ""),
+        ("protected_screen_tip", ""),
     ].iter().cloned().collect();
 }
 

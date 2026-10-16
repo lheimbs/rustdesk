@@ -782,6 +782,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("relay-fallback-delay-tip", "Wie lange eine bereits aufgebaute Relaisverbindung auf die direkte WebRTC-Verbindung wartet, bevor sie stattdessen verwendet wird. Erhöhen Sie den Wert, um einer langsamen direkten Verbindung mehr Zeit zu geben; verringern Sie ihn, um in Netzwerken ohne mögliche Direktverbindung schneller auf das Relais zurückzufallen. Leer lassen für den Standardwert von 2.5 Sekunden."),
         ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", ""),
         ("The identity of the remote device changed. Remove it from the recent sessions list to trust the new identity.", ""),
-        ("Unsafe file name", "")
+        ("Unsafe file name", ""),
+        ("protected_screen_tip", "Der entfernte Bildschirm ist geschützt (gesperrt, Anmeldebildschirm oder eine Administrator-Abfrage). Er wird nicht angezeigt und Ihre Eingaben erreichen ihn nicht. Die Ansicht kommt von selbst zurück, sobald der Bildschirm entsperrt ist."),
     ].iter().cloned().collect();
 }

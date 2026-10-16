@@ -2176,6 +2176,16 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                     }
+                    Some(misc::Union::ProtectedScreen(on)) => {
+                        let (msgtype, title, text) =
+                            ("custom-nocancel-nook-hasclose", "Prompt", "protected_screen_tip");
+                        if on {
+                            self.handler.msgbox(msgtype, title, text, "");
+                        } else {
+                            self.handler
+                                .cancel_msgbox(&format!("{}-{}-{}-", msgtype, title, text));
+                        }
+                    }
                     Some(misc::Union::ForegroundWindowElevated(elevated)) => {
                         let keyboard = self.handler.server_keyboard_enabled.read().unwrap().clone();
                         #[cfg(feature = "flutter")]

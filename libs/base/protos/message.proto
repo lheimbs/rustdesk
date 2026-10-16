@@ -870,6 +870,9 @@ message Misc {
     // is rebuilt, and held again, the next time it is shown, before any connection names it
     // by id again, so the shape just selected is always there to give.
     uint64 request_cursor_data = 39;
+    // Handover: the controlled screen is protected (locked, sign-in screen, UAC prompt) and not shown; false
+    // withdraws the notice.
+    bool protected_screen = 40;
   }
 }
 

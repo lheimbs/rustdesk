@@ -71,6 +71,7 @@ pub mod input_service {
 mod connection;
 mod connection_log;
 mod login_gate;
+pub(crate) mod protected_screen;
 pub(crate) mod session_server;
 pub(crate) mod sign_broker;
 mod login_failure_check;

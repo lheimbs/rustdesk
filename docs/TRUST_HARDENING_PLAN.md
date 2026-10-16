@@ -411,6 +411,28 @@ Measured on the Windows test machine (installed build, gated test servers, 2026-
 
 Known limits (not hidden): (1) code that can run inside the legitimate server process (same user, DLL injection) can still ask the broker while that process lives; what it cannot do is take the secret key away, so there is no offline impersonation; (2) the device credential **baked into a build** (`HANDOVER_DEVICE_CRED`) sits in the installed executable and is readable by every local user; only a per-machine `device.cred` in the service's own data folder is out of their reach (measured with `icacls` on the test machine: the folder and the config file grant access to SYSTEM, Administrators and LocalService only, while `Handover.exe` is readable by Users; an elevated administrator can read the secret, which matches the model: administrator is tier 1); (3) the service handles one IPC connection at a time, as before; a flood of authorised-looking connections can delay its session polling by up to a second each (pre-existing), but cannot obtain signatures; (4) a per-user key pair left in a user's profile by a pre-E4 build of E3 is ignored but not deleted (never shipped; delete `%APPDATA%\<app>\config` if present); (5) not yet exercised: two real Windows users, and the sign-in server (SYSTEM, not brokered, unchanged code path) against the user-level server after a sign-out (needs the owner present); the egress scripts have not been re-run on this build (E13).
 
+### 2u. E5: protected screens at tier 0 (2026-10-16; story E5 of the two-tier epic)
+
+What changed (`src/server/protected_screen.rs`, hooks in `video_service.rs`, `input_service.rs`, `client/io_loop.rs`, `Misc.protected_screen` in `message.proto`, `protected_screen_tip` in the language files). Only the user-level Windows server (brokered identity, E4) is affected; the SYSTEM sign-in server keeps the upstream behaviour. The screen counts as **protected** when the session is locked (`WTSSessionInfoEx` lock flag, so the lock-screen splash on the normal desktop counts, plan 2s) or the input desktop is not the server's own (UAC prompt, sign-in screen). While protected:
+- the video loop captures nothing, tells the controller once (`Misc.protected_screen = true`, shown as a notice) and waits; afterwards it withdraws the notice and starts a fresh capturer. The state is checked again right after every capture, and a frame taken as the screen became protected is dropped, not sent;
+- controller key presses, mouse moves and clicks are dropped; key and button **releases** still pass while the input desktop is the user's own (so a key held at the moment of locking does not stay down), and are dropped on a secure desktop, where they cannot be delivered anyway;
+- the cursor shape is not sent.
+
+Measured on the Windows test machine (installed build, gated test servers, signed Linux controller, 2026-10-16). Ghost-input controls: typed-character counts instead of clicks, and a local (VNC) control for every "nothing arrived".
+
+| Test | Result |
+|---|---|
+| baseline (tier 0, normal desktop) | live view; text typed from the controller arrives in Notepad |
+| T-06 UAC prompt started locally | controller shows the notice, the view keeps the last pre-prompt frame (no prompt pixels); controller Enter, Alt+J/Alt+Y and clicks: prompt still up, no elevated process, nothing reached Notepad; answered locally: the view resumed by itself within seconds, notice withdrawn, controller typing works again without reconnecting |
+| T-05 lock (`LockWorkStation`) | controller shows the notice; no lock-screen pixels sent (log `video paused` at the lock, last frame is the desktop) |
+| T-07 typing at the lock screen | controller space + 5 letters at the splash: the sign-in field did not even open (an unblocked user-level key opens it, plan 2s); sign-in field opened locally, controller typed 5 letters: **0 dots**; control: 3 letters typed locally gave 3 dots (then cleared) |
+| several minutes locked | 13 server log lines in 6 minutes (latency pings and one line per controller key release), no loop; CPU idle |
+| unlock restores the view without reconnecting | UNLOCK_RESULT |
+
+Not a way to unlock: `tscon <session> /dest:console` run as SYSTEM on a locked console session does not unlock it on Windows 11 24H2 (the sign-in screen stays); unlocking needs the person at the machine.
+
+Known limits: (1) the notice is a dismissable message box; once closed it comes back only on the next protected period; (2) each display's video loop sends its own notice (one display on the test machine); (3) the state is polled (100 ms for input, every captured frame for video), not event-driven; (4) a controller that joins while the screen is already protected gets the notice only if its video service starts then (it does, the first capture waits); (5) the "Failed to switch desktop" error of the upstream path still appears, throttled to one line per 3 s, when input arrives at a secure desktop.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

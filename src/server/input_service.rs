@@ -393,6 +393,10 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
 }
 
 fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()> {
+    #[cfg(windows)]
+    if super::protected_screen::is_protected() {
+        return Ok(());
+    }
     if let Some(hcursor) = crate::get_cursor()? {
         if hcursor != state.hcursor {
             let msg;
@@ -906,6 +910,12 @@ pub fn handle_mouse(
         return;
     }
     #[cfg(windows)]
+    if super::protected_screen::is_protected()
+        && (evt.mask & MOUSE_TYPE_MASK != MOUSE_TYPE_UP || !super::protected_screen::release_passes())
+    {
+        return;
+    }
+    #[cfg(windows)]
     crate::portable_service::client::handle_mouse(evt, conn, username, argb, simulate, show_cursor);
     #[cfg(not(windows))]
     handle_mouse_(evt, conn, username, argb, simulate, show_cursor);
@@ -919,6 +929,10 @@ pub fn handle_pointer(evt: &PointerDeviceEvent, conn: i32) {
         // having GUI, run main GUI thread, otherwise crash
         let evt = evt.clone();
         QUEUE.exec_async(move || handle_pointer_(&evt, conn));
+        return;
+    }
+    #[cfg(windows)]
+    if super::protected_screen::is_protected() {
         return;
     }
     #[cfg(windows)]
@@ -1583,6 +1597,12 @@ pub fn handle_key(evt: &KeyEvent) {
 #[inline]
 #[cfg(target_os = "windows")]
 pub fn handle_key(evt: &KeyEvent) {
+    // Key releases still pass, so a key held when the screen became protected does not stay down afterwards.
+    if super::protected_screen::is_protected()
+        && (evt.down || evt.press || !super::protected_screen::release_passes())
+    {
+        return;
+    }
     crate::portable_service::client::handle_key(evt);
 }
 

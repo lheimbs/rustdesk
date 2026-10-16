@@ -627,6 +627,8 @@ fn run(vs: VideoService) -> ResultType<()> {
     #[cfg(windows)]
     let dxgi_recovery_state = vs.dxgi_recovery_state.clone();
     let sp = vs.sp;
+    #[cfg(windows)]
+    super::protected_screen::wait_while_protected(&sp);
     let mut c = get_capturer(vs.source, display_idx, last_portable_service_running)?;
     #[cfg(windows)]
     // ACCESS_LOST marks the next successful capturer creation as a recovery. This timestamp is
@@ -777,6 +779,10 @@ fn run(vs: VideoService) -> ResultType<()> {
             check_privacy_mode_changed(&sp, display_idx, &c)?;
         }
         #[cfg(windows)]
+        if super::protected_screen::wait_while_protected(&sp) {
+            bail!("SWITCH");
+        }
+        #[cfg(windows)]
         {
             if crate::platform::windows::desktop_changed()
                 && !crate::portable_service::client::running()
@@ -798,6 +804,10 @@ fn run(vs: VideoService) -> ResultType<()> {
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
         let res = match c.frame(spf) {
             Ok(frame) => {
+                #[cfg(windows)]
+                if super::protected_screen::protected_now() {
+                    bail!("SWITCH");
+                }
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let screenshot_key = (vs.source, display_idx);
