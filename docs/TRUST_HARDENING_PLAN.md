@@ -474,6 +474,30 @@ Not yet run: **T-12** (a standard account answering UAC with an administrator pa
 
 Known limits: a controller can ask again right after a denial, so a hostile but accepted controller can repeat the request card (the person can disconnect it; the service log lines are throttled); the proof process is the full `Handover.exe`, started elevated for about a second.
 
+### 2x. E8: the service verifies the UAC proof and owns the grant (2026-10-16; story E8 of the two-tier epic)
+
+What changed (`src/server/elevation_grant.rs` pure state; service arm in `platform/windows.rs`; connection flow in `src/server/elevation.rs`; the CM's indicator and Stop button).
+- **Proof check (spec 4.4 step 6, S2, S3).** The service pipe already admits only peers in the active session (or SYSTEM) running the same program file. On top, a proof grants administrator access only if a request with that nonce is pending and unexpired, the sending process's token is **elevated** (`TokenElevation`), and its session is the request's session. The nonce is then used up; a replay, a late proof or an unknown nonce is refused. A refused proof leaves a real request waiting. The approving account (the elevated token's user) is recorded.
+- **Grant.** One per machine, bound to the connection, the controller credential serial, the session and the server process the service launched. Time limit 30 minutes; environment variable `HANDOVER_ELEVATION_MINUTES` at build time (1-480; not read from `.env`). In service memory only.
+- **End of a grant (F6).** Time limit; the controller's Drop; **Stop administrator access** in the connection manager (S8); the connection closing; a new server process or a session change (sign-out, user switch, service restart: checked on every turn of the service loop); and the service not confirming the grant when the server polls it once a second (fail closed). Each end is reported to the controller (expired / none / revoked) and the CM's indicator disappears.
+- **Log (F9).** The connection log gets `elevation-requested`, `elevation-granted ... approved by <account>`, `elevation-denied`, `elevation-expired`, `elevation-dropped`, `elevation-stopped`, `elevation-revoked`, `elevation-ended`; the service log the request, the grant (connection, controller serial, account), the end, and every refused proof.
+- **Not yet:** the privileged helper (E9). A grant changes the state, the controller's badge and the CM; the session's rights stay tier 0 until E9 starts the helper for it. The tray icon does not show tier 1 yet (F9 mentions it; the CM does).
+
+Measured on the Windows test machine (installed build, gated test servers, signed Linux controller, local actions through VNC; 2026-10-16):
+
+| Test | Result |
+|---|---|
+| request, Allow, UAC Yes | the controller's badge "Administrator access 29:53" counting down, the CM "Administrator access is active (30 minutes left)" with a Stop button; connection log `elevation-granted ... approved by <machine>\<user>`; service log with connection and controller serial |
+| T-17 local Stop | the controller: "Administrator access was ended on the remote machine"; CM indicator gone; service `ended` |
+| T-17 controller Drop (actions menu shows "Drop administrator access" instead of Request while granted) | badge gone, CM indicator gone, service `ended` |
+| T-18 the controller disconnects during a grant | connection log `elevation-ended ... connection closed`, service `ended` |
+| T-13 forged proofs while a real request was pending | a normal-user, non-elevated `--elevation-proof` in the console session: refused and logged (`elevated false ... no such request`); an elevated one from a session-0 shell: rejected by the service pipe's caller check before any elevation logic; the real request stayed pending |
+| T-25 service restart during a grant | the new service refused the old server's poll (`not the server of this session`), the connection was closed (`elevation-ended ... connection closed`), the grant was gone; no re-grant |
+| T-16 time limit (test build with `HANDOVER_ELEVATION_MINUTES=1`) | granted 18:17:22, `elevation-expired` 18:18:22; controller "expired", CM indicator gone (the helper part of T-16 belongs to E9) |
+| unit tests (`cargo test --lib elevation`, Linux) | 15 pass, among them: only an elevated proof from the same session grants, once (non-elevated, other session, wrong nonce, replay refused); a proof after expiry refused; a grant ends by time limit, end or reset; a new server process or session ends everything; the connection flow's grant, drop, local stop, service "gone" and unreachable service (fail closed), and out-of-order messages |
+
+T-14 in full (a used nonce, a nonce after expiry, a nonce of another connection) is covered by the unit tests; on the machine the nonce never leaves the CM process, so it was tested with made-up nonces only.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
