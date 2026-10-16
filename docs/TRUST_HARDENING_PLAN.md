@@ -435,6 +435,21 @@ Not a way to unlock: `tscon <session> /dest:console` run as SYSTEM on a locked c
 
 Known limits: (1) the notice is a dismissable message box; once closed it comes back only on the next protected period; (2) each display's video loop sends its own notice (one display on the test machine); (3) the state is polled (100 ms for input, every captured frame for video), not event-driven; (4) a controller that joins while the screen is already protected gets the notice only if its video service starts then (it does, the first capture waits); (5) the "Failed to switch desktop" error of the upstream path still appears, throttled to one line per 3 s, when input arrives at a secure desktop.
 
+### 2v. E6: requesting administrator access from the controller (2026-10-16; story E6 of the two-tier epic)
+
+What changed. Protocol (`message.proto`): `ElevationStatus{state none|requested|granted|denied|expired|revoked, expires_in_secs, reason, resume_secret}` as `Misc` field 41 (controlled side to controller), `Misc.elevation_drop` (42, controller gives up tier 1), `LoginRequest.resume_token` (20, for E10). `ElevationRequest.logon` stays in the schema only so that an old or hostile controller's request can be recognised and refused. Controlled side: `src/server/elevation.rs` answers every request; credentials (`logon`) are refused with a reason, and until the grant machinery of E7-E9 exists a direct request is **denied** ("Administrator access is not available on this machine"), so nothing can raise a session above tier 0 (fail closed, F10). The upstream path that started the portable service for a non-installed program on request is gone (the fork supports installed mode only). Controller: the credential path is removed end to end (`Data::ElevateWithLogon`, `session_elevate_with_logon`, the username/password dialog; S6); the toolbar's actions menu has "Request administrator access" (a confirmation that explains the local consent and UAC prompt) and, while granted, "Drop administrator access"; a toolbar badge shows "requested" and, while granted, the time left as a countdown; denied, expired and revoked show a notice with the reason (`src/client/elevation.rs`).
+
+Tests:
+
+| Check | Result |
+|---|---|
+| `cargo test --lib elevation` (Linux) | 3 pass: credentials refused; a direct or empty request is never granted; drop answers `none`; the end states produce a notice and the running states none |
+| `flutter test test/elevation_model_test.dart` | passes: every reported state is shown, the granted countdown runs and stops, unknown values fall back to none, the Drop entry exists only while granted |
+| real machine (installed build, signed Linux controller) | the actions menu shows "Request administrator access"; the confirmation explains the consent; the answer "Administrator access is not available on this machine" is shown as a notice; afterwards the entry is offered again |
+| builds | Linux release (vendor-host scan clean) and Windows installer |
+
+Not yet visible on a real machine: the badge for "requested" (the stub answers at once) and for "granted" with its countdown, and the expired/revoked notices; they need the grant of E7/E8, where they are to be checked. When the grant comes, the request handler has to check the session's keyboard permission again (the removed upstream handler refused requests without it).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

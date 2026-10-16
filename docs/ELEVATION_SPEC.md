@@ -112,6 +112,8 @@ Non-functional / security
 * IPC (named pipes, existing authorisation helpers in `src/ipc/auth.rs`): server to service `ElevationPending`, `SignIdPk`, `SignAdmissionToken`, `ResumeCheck`, `GrantEnded`; service to server `ElevationGranted`, `ElevationEnded`; `--elevation-proof` to service `ElevationProof`; CM to server `ElevationDecision{allow, keep}`.
 * No new TCP/UDP. No new URLs.
 
+**As built (E6, 2026-10-16; plan 2v).** `ElevationStatus` is `Misc` field 41, the drop is `Misc.elevation_drop` (42, a bool rather than its own message), `LoginRequest.resume_token` is field 20. `ElevationRequest.logon` remains in the schema so it can be recognised and refused; the controller has no way to send it any more.
+
 ### 4.6 Machine-wide identity
 
 All users share one ID. The ID, public key and non-secret settings live in a shared directory (`%ProgramData%\Handover`, ACL: SYSTEM and Administrators full, Users read). The secret key and the per-machine device credential stay in the SYSTEM-owned location; the user-level server calls the **sign broker** in the service (S4). Fallback if the broker is too invasive: a Users-readable key file with an explicit, owner-approved regression recorded in D20.
