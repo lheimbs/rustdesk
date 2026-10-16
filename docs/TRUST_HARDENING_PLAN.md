@@ -427,7 +427,7 @@ Measured on the Windows test machine (installed build, gated test servers, signe
 | T-05 lock (`LockWorkStation`) | controller shows the notice; no lock-screen pixels sent (log `video paused` at the lock, last frame is the desktop) |
 | T-07 typing at the lock screen | controller space + 5 letters at the splash: the sign-in field did not even open (an unblocked user-level key opens it, plan 2s); sign-in field opened locally, controller typed 5 letters: **0 dots**; control: 3 letters typed locally gave 3 dots (then cleared) |
 | several minutes locked | 13 server log lines in 6 minutes (latency pings and one line per controller key release), no loop; CPU idle |
-| unlock restores the view without reconnecting | UNLOCK_RESULT |
+| unlock restores the view without reconnecting | owner unlocked locally: log `video resumed` within a second, the notice withdrawn, live view, text typed from the same controller session arrives in Notepad |
 
 Not a way to unlock: `tscon <session> /dest:console` run as SYSTEM on a locked console session does not unlock it on Windows 11 24H2 (the sign-in screen stays); unlocking needs the person at the machine.
 
