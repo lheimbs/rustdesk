@@ -498,6 +498,28 @@ Measured on the Windows test machine (installed build, gated test servers, signe
 
 T-14 in full (a used nonce, a nonce after expiry, a nonce of another connection) is covered by the unit tests; on the machine the nonce never leaves the CM process, so it was tested with made-up nonces only.
 
+### 2y. E9: tier 1 through the privileged helper (2026-10-16; story E9 of the two-tier epic)
+
+What changed. When the service confirms a grant, the user-level server prepares the existing capture/input proxy (`src/server/portable_service.rs`: shared memory, one-time IPC token, the pipe `<app>\query_portable_service`) and asks the service to start the helper (`ServiceRequest::StartHelper`). The service starts `--portable-service` **as SYSTEM with the winlogon token in the user's session** (`launch_privileged_process`; E1: the only token that reaches the secure desktop), only for the server it launched and only while that grant is valid, keeps the helper's process handle, and **stops the helper as soon as the grant is gone** (checked on every turn of the service loop and after every elevation request). A helper that exits by itself ends the grant (the controller is told "revoked"). Capture, cursor and input switch to the helper through the existing proxy logic (the video loop re-creates its capturer when the proxy comes and goes); the tier-0 protected-screen rules of E5 stand down while the helper runs.
+
+New finding and fix: the helper (SYSTEM) is a *client* of a pipe the user-level server creates and **obeys whoever owns that pipe**; any process of the same user can create instances of the same pipe name (measured below), so a squatting process could have driven SYSTEM input on the secure desktop. The helper now gets the server's pid from the service (`--portable-service-server-pid`, a process whose handle the service holds, so the pid cannot be reused) and refuses a pipe whose owner (`GetNamedPipeServerProcessId`) is any other process; `--portable-service` started any other way (not SYSTEM, or without the pid) does nothing (it was disabled entirely by phase W until now).
+
+Measured on the Windows test machine (installed build, gated test servers, signed Linux controller; 2026-10-16):
+
+| Test | Result |
+|---|---|
+| T-02 baseline at tier 0: an elevated `cmd` opened locally, the controller types into it | nothing arrives (UIPI) |
+| grant | `--portable-service ... --portable-service-server-pid=<server pid>` running as **SYSTEM in the console session**; server log: proxy pipe started, helper connected, "switch due to portable service running changed" |
+| T-02 inverse at tier 1 | the controller's typing arrives in the elevated `cmd` |
+| T-10 (UAC part) | a UAC prompt started locally is visible in the controller's view (no protected-screen notice); the controller clicked No with nobody at the machine: the prompt was gone, no new elevated process |
+| local Stop | the helper process is gone at once (service log `helper ... stopped`); the controller's typing no longer reaches the elevated window: back to tier 0 without reconnecting |
+| forged proxy: a normal-user process keeps 4 instances of the proxy pipe name open before the grant | the user could create them; the server's own listener then failed ("access denied"); the helper connected to the squatter's instance and exited after 0.3 s, well before the 3 s handshake timeout, i.e. on the owner check; the grant ended and the controller was told "Administrator access was ended on the remote machine"; the squatter received nothing it could use |
+| uninstall | found `C:\ProgramData\<app>\portable_service_shmem` left behind (T-28): the uninstall script now removes `%PROGRAMDATA%\<app>` |
+
+Not yet run: the lock screen at tier 1 and T-24 (sleep and wake) need the owner at the machine; T-10's "input reaches an elevated window" is covered by T-02 inverse.
+
+Known limits: (1) during a grant, code running as the signed-in user (malware in the session) can drive the helper through the legitimate server or read the proxy's shared memory (frames of the secure desktop); tier 1 is granted to the session, as with any remote-support tool, and only for its time limit; (2) a process of the user that takes the proxy pipe name first blocks tier 1 for the life of that server process (denial of service, no control; the grant ends visibly); (3) the helper's own log file was not found on the test machine (SYSTEM profile); its exit reason above is inferred from the timing.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
