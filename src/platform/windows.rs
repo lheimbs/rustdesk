@@ -1008,6 +1008,13 @@ fn stop_elevation_helper_without_grant(
             CloseHandle(*helper);
         }
         *helper = NULL;
+        // No grant without its helper: a helper that died (or refused a pipe that is not the server's) ends the
+        // grant, and the controller is told on its next poll.
+        if exited {
+            if let Some(conn_id) = requests.reset() {
+                log::warn!("elevation: administrator access of connection {} ended: the helper exited", conn_id);
+            }
+        }
     }
 }
 
