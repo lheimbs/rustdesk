@@ -196,8 +196,12 @@ A new session may start with an empty context. Everything needed to continue mus
    `/home/<name>/`, e-mail addresses, `github_pat_`/`ghp_` tokens and private keys. If something leaked: remove it from the tree **and** from history (the branch is unreviewed and
    single-author, so rewriting it is acceptable; back up first, rewrite, verify every commit, update the issue text, delete the backup) - never leave it "fixed in a later commit".
 5. **Start and end of every session**: start by reading AGENTS.md, the epic, the open stories and `kb/README.md`; end by making sure the tickets, the plan and the kb reflect the
-   final state, the work is committed and pushed (token via `kb/scripts/github/gh-push.sh`), and every test machine and process you touched is back to its original state.
-6. Secrets: the GitHub token lives only in `.env` (git-ignored). Never print it, put it on a command line, store it in git config, or write it into the kb.
+   final state, the work is committed, merged and pushed (see rule 7), and every test machine and process you touched is back to its original state.
+6. Secrets: the GitHub token lives only in the local `gh` login or the git-ignored `.env`. Never print it, put it on a command line, store it in git config, or write it into the kb.
+7. **Branches.** Do each piece of work (a story, a fix) on its own branch off `handover/trust-hardening` (`<area>/<topic>`, e.g. `elevation/e5-protected-screen`)
+   and push it while you work. When it is done (tests pass, tickets updated, scrub check clean), merge it straight into `handover/trust-hardening`
+   (fast-forward when possible, otherwise `git merge --no-ff`; never force-push the main branch), push, and delete the work branch. No pull requests:
+   the fork has one author and the epics' resume pointers assume the single branch `handover/trust-hardening`.
 
 ### Rules for agents working in this fork
 
