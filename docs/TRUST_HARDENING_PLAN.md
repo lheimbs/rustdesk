@@ -536,6 +536,19 @@ No code change; verification on the Windows test machine (installed build, gated
 
 Not covered: another user's profile (needs a second test account; the owner's own profile on the test machine was deliberately not browsed); clipboard (it runs in the same user-level processes as T-01 shows; not exercised in this run). Observation for E13 (log hygiene): while a file-transfer connection was set up, a peer process the user-level server could not open (access denied) caused two DEBUG lines per second for about 23 s.
 
+### 2aa. E13: egress and admission regression with the new processes (2026-10-16; story E13 of the two-tier epic)
+
+No code change. Builds: the Windows installer of `handover/trust-hardening` after E9/E11, the Linux controller bundle of E6 (no controller change since).
+
+| Test | Result |
+|---|---|
+| T-27 Linux, `tools/egress-all.sh 60` with the admission servers (`HANDOVER_CA_PUB` set) and a signed controller credential | server, ui, down, offline, wrongkey: **PASS**; selftest: leak detected (expected) |
+| T-27 Windows, `tools/egress-windows.ps1` over a full run: install, open, connect, request and Deny, request and grant (helper running as SYSTEM), a UAC prompt answered from the controller, local Stop, disconnect, then the admission attempts below | **PASS**: the program (every process: service, server, CM, tray, UI, the `--elevation-proof` and `--portable-service` helpers are the same executable) connected only to the test server's ports 21115-21117 (TCP) and 21116 (UDP), 14 events, nothing blocked; the DNS cache held only names of other software |
+| admission matrix (wrong password each time, so no prompt) | signed controller: reached the controlled side, `login-refused ... Wrong Password`; other issuer: refused at `hbbs` ("credential not signed by the trusted issuer"); device credential: refused at `hbbs` ("wrong role"); no credential: refused at `hbbs` ("malformed token"); the three refusals never reached the machine and showed "Key mismatch" on the controller; **identical to plan 2q** |
+| revocation | the signed controller's serial put in the revocation file: refused at `hbbs` ("credential revoked") within seconds; file restored afterwards |
+
+Not covered: the sign-in server (SYSTEM, no user signed in) against the admission matrix; it needs a sign-out on the test machine (owner).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
