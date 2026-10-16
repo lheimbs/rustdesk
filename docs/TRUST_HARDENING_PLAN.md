@@ -521,6 +521,21 @@ Not yet run: the lock screen at tier 1 and T-24 (sleep and wake) need the owner 
 
 Known limits: (1) during a grant, code running as the signed-in user (malware in the session) can drive the helper through the legitimate server or read the proxy's shared memory (frames of the secure desktop); tier 1 is granted to the session, as with any remote-support tool, and only for its time limit; (2) a process of the user that takes the proxy pipe name first blocks tier 1 for the life of that server process (denial of service, no control; the grant ends visibly); (3) the helper's own log file was not found on the test machine (SYSTEM profile); its exit reason above is inferred from the timing.
 
+### 2z. E11: tier-0 data paths run with the user's rights (2026-10-16; story E11 of the two-tier epic)
+
+No code change; verification on the Windows test machine (installed build, gated test servers, signed Linux controller).
+
+| Test | Result |
+|---|---|
+| T-01 which account runs what | `--service`: SYSTEM, session 0, elevated, system integrity; `--server`, `--cm`, `--tray` and the UI: the signed-in user, session 1, **not elevated, medium integrity** (0x2000), although that account is an administrator (filtered token); the helper exists only during a grant (E9) |
+| T-03 file transfer into SYSTEM-only places | listing the service's own data folder and `C:\Windows\System32\config` was refused (the view stayed where it was), while the same way of navigating listed `C:\Program Files\<app>`; the file operations run in the connection manager (`--cm`), i.e. as the user |
+| T-04 file transfer into the user's folder | the uploaded file is **owned by the signed-in user**, content intact |
+| upload into a folder the user may not write (`C:\Program Files\<app>`) | the file was **not written** (correct), but the controller showed "Finished, 1/1 files": bug #53 |
+| tier 1 does not widen file transfer | during a grant (helper running) the service's data folder was still refused: the helper only captures and injects input |
+| audio | the user-level server opened the default output device (server log); not listened to |
+
+Not covered: another user's profile (needs a second test account; the owner's own profile on the test machine was deliberately not browsed); clipboard (it runs in the same user-level processes as T-01 shows; not exercised in this run). Observation for E13 (log hygiene): while a file-transfer connection was set up, a peer process the user-level server could not open (access denied) caused two DEBUG lines per second for about 23 s.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
