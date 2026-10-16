@@ -969,7 +969,6 @@ impl Connection {
                             let actions = conn.elevation.stopped();
                             conn.run_elevation_actions(actions).await;
                         }
-                        }
                         #[cfg(feature = "flutter")]
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         ipc::Data::SwitchSidesBack => {
