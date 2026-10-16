@@ -745,6 +745,10 @@ class ServerModel with ChangeNotifier {
     if (id == null) return;
     if (evt['show'].toString() == 'true') {
       elevationRequests[id] = int.tryParse(evt['minutes'].toString()) ?? 0;
+      // The connection manager minimises itself after Accept; the person has to see the request.
+      final index = _clients.indexWhere((client) => client.id == id);
+      if (index >= 0) tabController.jumpTo(index);
+      if (isDesktop) windowOnTop(null);
     } else {
       elevationRequests.remove(id);
     }
