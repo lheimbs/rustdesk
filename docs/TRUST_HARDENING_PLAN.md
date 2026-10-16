@@ -450,6 +450,30 @@ Tests:
 
 Not yet visible on a real machine: the badge for "requested" (the stub answers at once) and for "granted" with its countdown, and the expired/revoked notices; they need the grant of E7/E8, where they are to be checked. When the grant comes, the request handler has to check the session's keyboard permission again (the removed upstream handler refused requests without it).
 
+### 2w. E7: consent on the controlled side and the UAC proof launch (2026-10-16; story E7 of the two-tier epic)
+
+What changed. `src/server/elevation.rs` (connection side) and `src/server/elevation_grant.rs` (service side, pure), thin hooks in `connection.rs`, the service loop and `--elevation-proof` in `core_main.rs`, the connection manager in `ui_cm_interface.rs` and the CM page. Flow (spec 4.4 steps 1-5):
+1. A request (`ElevationRequest.direct`) is checked: keyboard permission, nothing pending on this connection, and the **UAC policy (F10)**: `EnableLUA` = 1, `ConsentPromptBehaviorAdmin` not 0 (no silent elevation), and the prompt on the secure desktop (`ConsentPromptBehaviorAdmin` 1 or 2, or `PromptOnSecureDesktop` = 1); a prompt on the normal desktop would be visible and clickable for a tier-0 controller. Missing registry values take the Windows defaults.
+2. The service records it under a 256-bit one-time nonce, only when asked by the server process it launched itself (same caller check as the sign broker, plan 2t); one request per machine; hard limit 180 s.
+3. The connection manager comes to front (it minimises itself after Accept) and shows the request on the client's card: what administrator access allows, the time limit (30 minutes), Allow / Deny. The nonce stays in the CM process; the UI never sees it. The buttons use the existing click check that drops clicks coinciding with the controller's own input.
+4. Deny, no answer within 60 s, or the connection closing: the request is withdrawn from the service, the card closes, the controller is told (denied / expired).
+5. Allow: the CM starts `Handover.exe --elevation-proof <nonce>` with `runas`, so Windows shows its UAC prompt on the secure desktop; if it is declined the controller is told "The Windows prompt was declined". If it is accepted, the elevated process sends the nonce to the service and exits; the wait for the grant is bounded by 120 s. **The service does not verify proofs yet (story E8): it refuses them, so no request ends in a grant.**
+
+Measured on the Windows test machine (installed build, gated test servers, signed Linux controller, 2026-10-16; local actions through the machine's own VNC):
+
+| Test | Result |
+|---|---|
+| T-08 request, local Deny | the CM came to front with the request; after Deny the controller showed "The person at the remote machine denied administrator access", the card closed; no UAC prompt |
+| T-09 request, nobody answers | after the time limit the card closed by itself, the controller showed "expired", no UAC prompt (`consent.exe` count 0) |
+| T-11 request, Allow, UAC answered No | the UAC prompt (`Handover.exe`, publisher unknown: unsigned test build) appeared on the secure desktop; after No the controller showed "The Windows prompt was declined"; no elevated process |
+| Allow, UAC answered Yes | the elevated `--elevation-proof` process reached the service (its log: `the service answered Denied("not supported")`, the E8 placeholder); after the 120 s bound the controller showed "expired" |
+| the controller clicks Allow in its own view of the CM | nothing happened: no UAC prompt, the card stayed; the request then expired (the click check of the CM; whether the click landed exactly on the button cannot be proven from the view) |
+| unit tests (`cargo test --lib elevation`, Linux) | 9 pass: UAC policy table, preconditions, the connection flow (deny, timeout, declined prompt, bounded wait after Allow, late answers ignored, close withdraws), the service record (one at a time, cancel by nonce only, expiry), fresh 64-hex-digit nonces |
+
+Not yet run: **T-12** (a standard account answering UAC with an administrator password) and **T-15** (UAC policy that does not prompt on the secure desktop): both change the test machine's Windows settings (a second local account, a UAC registry value) and wait for the owner's approval; the policy decision itself is unit-tested. The controller's "requested" badge is now confirmed on screen (open item of E6).
+
+Known limits: a controller can ask again right after a denial, so a hostile but accepted controller can repeat the request card (the person can disconnect it; the service log lines are throttled); the proof process is the full `Handover.exe`, started elevated for about a second.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
