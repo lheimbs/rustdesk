@@ -737,6 +737,24 @@ class ServerModel with ChangeNotifier {
     tabController.jumpTo(index);
   }
 
+  /// Pending requests for administrator access: connection id -> grant time limit in minutes.
+  final elevationRequests = <int, int>{}.obs;
+
+  void updateElevationRequest(Map<String, dynamic> evt) {
+    final id = int.tryParse(evt['id'].toString());
+    if (id == null) return;
+    if (evt['show'].toString() == 'true') {
+      elevationRequests[id] = int.tryParse(evt['minutes'].toString()) ?? 0;
+    } else {
+      elevationRequests.remove(id);
+    }
+  }
+
+  void answerElevationRequest(int id, bool allow) {
+    elevationRequests.remove(id);
+    bind.cmElevationDecision(connId: id, allow: allow);
+  }
+
   void setShowElevation(bool show) {
     if (_showElevation != show) {
       _showElevation = show;

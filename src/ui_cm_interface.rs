@@ -195,6 +195,9 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
 
     fn show_elevation(&self, show: bool);
 
+    /// Show (or hide) a controller's request for administrator access (elevation spec F4).
+    fn elevation_request(&self, _id: i32, _show: bool, _minutes: u64) {}
+
     fn update_voice_call_state(&self, client: &Client);
 
     fn file_transfer_log(&self, action: &str, log: &str);
@@ -663,6 +666,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                                 Data::DataPortableService(ipc::DataPortableService::CmShowElevation(show)) => {
                                     self.cm.show_elevation(show);
+                                }
+                                #[cfg(windows)]
+                                Data::ElevationCm(m) => {
+                                    elevation_from_server(&self.cm, self.conn_id, m);
                                 }
                                 Data::StartVoiceCall => {
                                     self.cm.voice_call_started(self.conn_id);
@@ -1711,6 +1718,58 @@ fn cm_inner_send(id: i32, data: Data) {
         for s in lock.values() {
             allow_err!(s.tx.send(data.clone()));
         }
+    }
+}
+
+#[cfg(windows)]
+lazy_static::lazy_static! {
+    /// The pending request's nonce per connection; it never goes to the UI.
+    static ref ELEVATION_NONCES: std::sync::Mutex<HashMap<i32, String>> = Default::default();
+}
+
+#[cfg(windows)]
+fn elevation_from_server<T: InvokeUiCM>(
+    cm: &ConnectionManager<T>,
+    id: i32,
+    message: crate::server::elevation::CmMessage,
+) {
+    use crate::server::elevation::CmMessage;
+    match message {
+        CmMessage::Prompt { nonce, minutes, .. } => {
+            ELEVATION_NONCES.lock().unwrap().insert(id, nonce);
+            cm.elevation_request(id, true, minutes);
+        }
+        CmMessage::Close => {
+            ELEVATION_NONCES.lock().unwrap().remove(&id);
+            cm.elevation_request(id, false, 0);
+        }
+        CmMessage::Decision { .. } => {}
+    }
+}
+
+/// The person's answer to a request for administrator access. Allow starts `--elevation-proof` through the
+/// Windows UAC prompt (elevation spec 4.4 step 5); the connection learns the outcome.
+pub fn elevation_decision(_id: i32, _allow: bool) {
+    #[cfg(windows)]
+    {
+        let Some(nonce) = ELEVATION_NONCES.lock().unwrap().remove(&_id) else {
+            return;
+        };
+        let allow = _allow;
+        std::thread::spawn(move || {
+            let uac_declined = allow
+                && !matches!(
+                    crate::platform::windows::elevate(&format!("--elevation-proof {}", nonce)),
+                    Ok(true)
+                );
+            cm_inner_send(
+                _id,
+                Data::ElevationCm(crate::server::elevation::CmMessage::Decision {
+                    allow,
+                    uac_declined,
+                }),
+            );
+        });
     }
 }
 

@@ -794,5 +794,13 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Administrator access was ended on the remote machine", ""),
         ("Administrator access is not available on this machine", ""),
         ("Credentials from the controller are not accepted", ""),
+        ("Allow", ""),
+        ("Deny", ""),
+        ("elevation_request_tip", ""),
+        ("Administrator access needs the keyboard permission", ""),
+        ("A request for administrator access is already pending", ""),
+        ("Administrator access needs Windows UAC with a prompt on the secure desktop", ""),
+        ("The person at the remote machine denied administrator access", ""),
+        ("The Windows prompt was declined", ""),
     ].iter().cloned().collect();
 }

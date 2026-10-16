@@ -702,6 +702,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     // signatures from it, see `server::sign_broker`.
     let _ = (Config::get_id(), Config::get_key_pair());
     let mut broker_limit = crate::server::sign_broker::RateLimit::new(Instant::now());
+    let mut elevation_requests = crate::server::elevation_grant::Requests::default();
     let mut session_id = unsafe { get_current_session(share_rdp()) };
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
@@ -755,6 +756,16 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                     &mut broker_limit,
                                 );
                                 allow_err!(stream.send(&ipc::Data::BrokerReply(reply)).await);
+                            }
+                            ipc::Data::Elevation(request) => {
+                                let reply = serve_elevation_request(
+                                    request,
+                                    stream.peer_pid(),
+                                    h_process,
+                                    session_id,
+                                    &mut elevation_requests,
+                                );
+                                allow_err!(stream.send(&ipc::Data::ElevationReply(reply)).await);
                             }
                             ipc::Data::UserSid(usid) => {
                                 if let Some(usid) = usid {
@@ -861,6 +872,74 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         session_server::ServerKind::SignIn => launch_privileged_process(session_id, &cmd),
         session_server::ServerKind::User => launch_user_process(session_id, &cmd),
     }
+}
+
+/// Elevation requests (spec 4.4): only the server process this service launched may create or withdraw one.
+/// A proof from `--elevation-proof` is verified with story E8; until then it is refused, so no grant exists.
+fn serve_elevation_request(
+    request: crate::server::elevation_grant::ServiceRequest,
+    peer_pid: Option<u32>,
+    launched: HANDLE,
+    session_id: u32,
+    requests: &mut crate::server::elevation_grant::Requests,
+) -> crate::server::elevation_grant::ServiceReply {
+    use crate::server::elevation_grant::{new_nonce, ServiceReply, ServiceRequest};
+    let launched_pid = if launched.is_null() {
+        0
+    } else {
+        unsafe { GetProcessId(launched) }
+    };
+    let from_server = launched_pid != 0 && peer_pid == Some(launched_pid);
+    match request {
+        ServiceRequest::Create { conn_id, serial } if from_server => {
+            let reply = requests.create(conn_id, serial, session_id, new_nonce(), Instant::now());
+            hbb_common::throttled_log!(
+                Duration::from_secs(10),
+                info,
+                "elevation: request from connection {} (controller serial {}): {}",
+                conn_id,
+                serial,
+                if matches!(reply, ServiceReply::Created(_)) { "recorded" } else { "refused, another is pending" }
+            );
+            reply
+        }
+        ServiceRequest::Cancel { nonce } if from_server => requests.cancel(&nonce),
+        ServiceRequest::Proof { .. } => {
+            log::warn!("elevation: a proof arrived, but proofs are not verified yet (E8); refused");
+            ServiceReply::Denied("not supported".to_owned())
+        }
+        _ => {
+            hbb_common::throttled_log!(
+                Duration::from_secs(5),
+                warn,
+                "elevation: refused a caller that is not the server of this session, peer_pid={:?}",
+                peer_pid
+            );
+            ServiceReply::Denied("the caller is not the server of this session".to_owned())
+        }
+    }
+}
+
+/// F10 (elevation spec): read the UAC policy; missing values take the Windows defaults.
+pub fn uac_allows_elevation() -> bool {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let Ok(key) = hklm.open_subkey_with_flags(
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        KEY_READ,
+    ) else {
+        return false;
+    };
+    let value = |name: &str, default: u32| key.get_value::<u32, _>(name).unwrap_or(default);
+    let policy = crate::server::elevation::UacPolicy {
+        enable_lua: value("EnableLUA", 1),
+        consent_prompt_behavior_admin: value("ConsentPromptBehaviorAdmin", 5),
+        prompt_on_secure_desktop: value("PromptOnSecureDesktop", 1),
+    };
+    let ok = crate::server::elevation::uac_allows_elevation(&policy);
+    if !ok {
+        hbb_common::throttled_log!(Duration::from_secs(60), info, "elevation: refused by the UAC policy {:?}", policy);
+    }
+    ok
 }
 
 /// Answers a sign-broker request, but only for the very server process this service launched: its handle is

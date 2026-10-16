@@ -330,6 +330,12 @@ pub fn core_main() -> Option<Vec<String>> {
             log::info!("start --uninstall-service");
             crate::platform::uninstall_service(false, true);
             return None;
+        } else if args[0] == "--elevation-proof" {
+            #[cfg(windows)]
+            if let Some(nonce) = args.get(1) {
+                crate::server::elevation::send_proof(nonce);
+            }
+            return None;
         } else if args[0] == "--service" {
             log::info!("start --service");
             crate::start_os_service();

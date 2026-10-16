@@ -279,5 +279,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("relay-fallback-delay-tip", "How long a relay connection that is already up waits for the direct WebRTC connection before it is used instead. Raise it to give a slow direct connection more time to win; lower it to settle on the relay sooner on networks where a direct connection cannot be made. Leave empty for the default of 2.5 seconds."),
         ("protected_screen_tip", "The remote screen is protected (locked, sign-in screen or an administrator prompt). It is not shown and your input does not reach it. The view comes back by itself once the screen is unlocked."),
         ("request_administrator_access_tip", "The person at the remote machine has to allow it and answer the Windows prompt. Until then the session keeps the rights of the signed-in user."),
+        ("elevation_request_tip", "The controller asks for administrator access for {} minutes. It could then see and answer Windows prompts and the lock screen. Allow opens the Windows prompt, which you have to confirm."),
     ].iter().cloned().collect();
 }

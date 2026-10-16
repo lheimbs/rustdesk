@@ -2279,6 +2279,11 @@ pub fn cm_elevate_portable(conn_id: i32) {
     crate::ui_cm_interface::elevate_portable(conn_id);
 }
 
+pub fn cm_elevation_decision(conn_id: i32, allow: bool) {
+    #[cfg(not(any(target_os = "ios")))]
+    crate::ui_cm_interface::elevation_decision(conn_id, allow);
+}
+
 pub fn cm_switch_back(conn_id: i32) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     crate::ui_cm_interface::switch_back(conn_id);

@@ -394,6 +394,12 @@ pub enum Data {
     Broker(crate::server::sign_broker::BrokerRequest),
     #[cfg(windows)]
     BrokerReply(crate::server::sign_broker::BrokerReply),
+    #[cfg(windows)]
+    Elevation(crate::server::elevation_grant::ServiceRequest),
+    #[cfg(windows)]
+    ElevationReply(crate::server::elevation_grant::ServiceReply),
+    #[cfg(windows)]
+    ElevationCm(crate::server::elevation::CmMessage),
     UserSid(Option<u32>),
     OnlineStatus(Option<(i64, bool)>),
     Config((String, Option<String>)),

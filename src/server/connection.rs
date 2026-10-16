@@ -416,6 +416,8 @@ pub struct Connection {
     file_transferred: bool,
     #[cfg(windows)]
     portable: PortableState,
+    #[cfg(windows)]
+    elevation: super::elevation::ConnElevation,
     from_switch: bool,
     voice_call_request_timestamp: Option<NonZeroI64>,
     voice_calling: bool,
@@ -621,6 +623,8 @@ impl Connection {
             file_transferred: false,
             #[cfg(windows)]
             portable: Default::default(),
+            #[cfg(windows)]
+            elevation: Default::default(),
             from_switch: false,
             audio_sender: None,
             voice_call_request_timestamp: None,
@@ -956,6 +960,11 @@ impl Connection {
                             conn.send(msg_out).await;
                         }
                         #[cfg(windows)]
+                        ipc::Data::ElevationCm(super::elevation::CmMessage::Decision { allow, uac_declined }) => {
+                            let actions = conn.elevation.decision(allow, uac_declined, std::time::Instant::now());
+                            conn.run_elevation_actions(actions).await;
+                        }
+                        #[cfg(windows)]
                         ipc::Data::DataPortableService(ipc::DataPortableService::RequestStart) => {
                             if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
                                 log::error!("Failed to start portable service from cm: {:?}", e);
@@ -1155,6 +1164,11 @@ impl Connection {
                 _ = second_timer.tick() => {
                     #[cfg(windows)]
                     conn.portable_check();
+                    #[cfg(windows)]
+                    {
+                        let actions = conn.elevation.tick(std::time::Instant::now());
+                        conn.run_elevation_actions(actions).await;
+                    }
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
                         if instant.elapsed().as_secs() > minute * 60 {
@@ -3855,8 +3869,16 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::ElevationRequest(r)) => {
-                        let status = super::elevation::answer_request(&r);
-                        self.send(super::elevation::message(status)).await;
+                        #[cfg(windows)]
+                        if matches!(r.union, Some(elevation_request::Union::Direct(_))) {
+                            self.request_elevation().await;
+                        } else {
+                            let status = super::elevation::answer_request(&r);
+                            self.send(super::elevation::message(status)).await;
+                        }
+                        #[cfg(not(windows))]
+                        self.send(super::elevation::message(super::elevation::answer_request(&r)))
+                            .await;
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::ElevationDrop(_)) => {
@@ -4565,6 +4587,45 @@ impl Connection {
         true
     }
 
+    /// Elevation spec 4.4 steps 2-3: check the preconditions, record the request in the service, show it to the
+    /// person at the machine.
+    #[cfg(windows)]
+    async fn request_elevation(&mut self) {
+        use super::elevation::{check_request, create_in_service, status, Action, State, NOT_AVAILABLE};
+        let uac_ok = crate::platform::windows::uac_allows_elevation();
+        let actions = match check_request(self.keyboard, self.elevation.busy(), uac_ok) {
+            Err(why) => vec![Action::Controller(status(State::Denied, why))],
+            Ok(()) => {
+                let serial = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash)
+                    .map(|c| c.serial);
+                let created = match serial {
+                    Ok(serial) => create_in_service(self.inner.id(), serial).await,
+                    Err(err) => Err(err.to_string()),
+                };
+                match created {
+                    Ok(nonce) => self.elevation.created(nonce, std::time::Instant::now()),
+                    Err(why) => {
+                        log::warn!("elevation: request not recorded: {}", why);
+                        vec![Action::Controller(status(State::Denied, NOT_AVAILABLE))]
+                    }
+                }
+            }
+        };
+        self.run_elevation_actions(actions).await;
+    }
+
+    #[cfg(windows)]
+    async fn run_elevation_actions(&mut self, actions: Vec<super::elevation::Action>) {
+        use super::elevation::{cancel_in_service, message, Action};
+        for action in actions {
+            match action {
+                Action::Controller(status) => self.send(message(status)).await,
+                Action::Cm(m) => self.send_to_cm(ipc::Data::ElevationCm(m)),
+                Action::Cancel(nonce) => cancel_in_service(nonce),
+            }
+        }
+    }
+
     async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) {
         let video_source = self.video_source();
         let source_count = Self::video_source_count(video_source);
@@ -5160,6 +5221,11 @@ impl Connection {
     }
 
     async fn on_close(&mut self, reason: &str, lock: bool) {
+        #[cfg(windows)]
+        {
+            let actions = self.elevation.closed();
+            self.run_elevation_actions(actions).await;
+        }
         if self.closed {
             return;
         }

@@ -72,6 +72,7 @@ mod connection;
 mod connection_log;
 mod login_gate;
 pub(crate) mod elevation;
+pub(crate) mod elevation_grant;
 pub(crate) mod protected_screen;
 pub(crate) mod session_server;
 pub(crate) mod sign_broker;

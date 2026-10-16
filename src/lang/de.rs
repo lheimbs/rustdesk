@@ -794,5 +794,13 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Administrator access was ended on the remote machine", "Der Administratorzugriff wurde am entfernten Gerät beendet"),
         ("Administrator access is not available on this machine", "Administratorzugriff ist auf diesem Gerät nicht verfügbar"),
         ("Credentials from the controller are not accepted", "Zugangsdaten vom steuernden Gerät werden nicht angenommen"),
+        ("Allow", "Zulassen"),
+        ("Deny", "Ablehnen"),
+        ("elevation_request_tip", "Das steuernde Gerät bittet um Administratorzugriff für {} Minuten. Damit könnte es Windows-Abfragen und den Sperrbildschirm sehen und bedienen. \"Zulassen\" öffnet die Windows-Abfrage, die Sie bestätigen müssen."),
+        ("Administrator access needs the keyboard permission", "Administratorzugriff erfordert die Berechtigung für die Tastatur"),
+        ("A request for administrator access is already pending", "Eine Anfrage nach Administratorzugriff ist bereits offen"),
+        ("Administrator access needs Windows UAC with a prompt on the secure desktop", "Administratorzugriff erfordert die Windows-Benutzerkontensteuerung mit Abfrage auf dem sicheren Desktop"),
+        ("The person at the remote machine denied administrator access", "Die Person am entfernten Gerät hat den Administratorzugriff abgelehnt"),
+        ("The Windows prompt was declined", "Die Windows-Abfrage wurde abgelehnt"),
     ].iter().cloned().collect();
 }

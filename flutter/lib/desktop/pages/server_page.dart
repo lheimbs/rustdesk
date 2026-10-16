@@ -1007,6 +1007,43 @@ class _CmControlPanel extends StatelessWidget {
             ],
           ),
         ),
+        Obx(() {
+          final minutes = model.elevationRequests[client.id];
+          if (minutes == null) return const Offstage();
+          return Column(
+            children: [
+              Text(
+                translate('elevation_request_tip')
+                    .replaceAll('{}', minutes.toString()),
+                style: const TextStyle(fontSize: 12),
+              ).marginOnly(bottom: buttonBottomMargin),
+              Row(
+                children: [
+                  Expanded(
+                    child: buildButton(context,
+                        color: MyTheme.accent,
+                        onClick: () =>
+                            model.answerElevationRequest(client.id, true),
+                        icon: Icon(Icons.admin_panel_settings_rounded,
+                            color: Colors.white, size: 14),
+                        text: 'Allow',
+                        textColor: Colors.white),
+                  ),
+                  Expanded(
+                    child: buildButton(context,
+                        color: Colors.red,
+                        onClick: () =>
+                            model.answerElevationRequest(client.id, false),
+                        icon: Icon(Icons.block_rounded,
+                            color: Colors.white, size: 14),
+                        text: 'Deny',
+                        textColor: Colors.white),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }),
         Offstage(
           offstage: !client.fromSwitch,
           child: buildButton(context,
