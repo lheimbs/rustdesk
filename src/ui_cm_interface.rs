@@ -1781,24 +1781,13 @@ pub fn elevation_stop(_id: i32) {
     cm_inner_send(_id, Data::ElevationCm(crate::server::elevation::CmMessage::Stop));
 }
 
+/// Handover (elevation E12): administrator access is requested by the controller and granted through the service
+/// (E7-E9); the upstream "elevate" buttons of the connection manager are not offered.
 pub fn can_elevate() -> bool {
-    #[cfg(windows)]
-    return !crate::platform::is_installed();
-    #[cfg(not(windows))]
-    return false;
+    false
 }
 
-pub fn elevate_portable(_id: i32) {
-    #[cfg(windows)]
-    {
-        let lock = CLIENTS.read().unwrap();
-        if let Some(s) = lock.get(&_id) {
-            allow_err!(s.tx.send(ipc::Data::DataPortableService(
-                ipc::DataPortableService::RequestStart
-            )));
-        }
-    }
-}
+pub fn elevate_portable(_id: i32) {}
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]

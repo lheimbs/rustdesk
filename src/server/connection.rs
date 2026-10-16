@@ -969,11 +969,6 @@ impl Connection {
                             let actions = conn.elevation.stopped();
                             conn.run_elevation_actions(actions).await;
                         }
-                        #[cfg(windows)]
-                        ipc::Data::DataPortableService(ipc::DataPortableService::RequestStart) => {
-                            if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
-                                log::error!("Failed to start portable service from cm: {:?}", e);
-                            }
                         }
                         #[cfg(feature = "flutter")]
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -1,7 +1,7 @@
 use crate::{
     ipc::{self, new_listener, Connection, Data, DataPortableService, IPC_TOKEN_LEN},
     platform::{
-        set_path_permission, set_path_permission_for_portable_service_shmem_dir,
+        set_path_permission_for_portable_service_shmem_dir,
         set_path_permission_for_portable_service_shmem_file,
         validate_path_for_portable_service_shmem_dir,
     },
@@ -34,7 +34,6 @@ use winapi::{
     shared::minwindef::{BOOL, FALSE, TRUE},
     um::winuser::{self, CURSORINFO, PCURSORINFO},
 };
-use windows::Win32::Storage::FileSystem::{FILE_GENERIC_EXECUTE, FILE_GENERIC_READ};
 
 use super::video_qos;
 
@@ -860,9 +859,8 @@ pub mod client {
     }
 
     pub enum StartPara {
-        Direct,
-        Logon(String, String),
-        /// Handover (elevation E9): the service starts the helper as SYSTEM for the grant with this nonce.
+        /// Handover (elevation E9): the service starts the helper as SYSTEM for the grant with this nonce. The upstream
+        /// variants (the server starting it itself, or with credentials from the controller) are removed (E12).
         Service(String),
     }
 
@@ -1089,30 +1087,10 @@ pub mod client {
             };
             drop(shmem_lock);
             set_runtime_ipc_token(ipc_token.clone());
-            let portable_service_arg = format!(
-                "--portable-service {}",
-                crate::portable_service::portable_service_shmem_arg(&shmem_name)
-            );
             {
                 let _sender = SENDER.lock().unwrap();
             }
             match para {
-                StartPara::Direct => {
-                    match crate::platform::run_background(
-                        &std::env::current_exe()?.to_string_lossy().to_string(),
-                        &portable_service_arg,
-                    ) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            clear_runtime_shmem_state();
-                            bail!("Failed to run portable service process");
-                        }
-                        Err(e) => {
-                            clear_runtime_shmem_state();
-                            bail!("Failed to run portable service process: {}", e);
-                        }
-                    }
-                }
                 StartPara::Service(nonce) => {
                     let shmem_name = shmem_name.clone();
                     std::thread::spawn(move || {
@@ -1122,78 +1100,6 @@ pub mod client {
                             *STARTING.lock().unwrap() = false;
                         }
                     });
-                }
-                StartPara::Logon(username, password) => {
-                    #[allow(unused_mut)]
-                    let mut exe = std::env::current_exe()?.to_string_lossy().to_string();
-                    #[cfg(feature = "flutter")]
-                    {
-                        if let Some(dir) = Path::new(&exe).parent() {
-                            if let Err(err) = set_path_permission(
-                                Path::new(dir),
-                                FILE_GENERIC_READ.0 | FILE_GENERIC_EXECUTE.0,
-                            ) {
-                                clear_runtime_shmem_state();
-                                bail!("Failed to set permission of {:?}: {}", dir, err);
-                            }
-                        }
-                    }
-                    #[cfg(not(feature = "flutter"))]
-                    if let Some((dir, dst)) =
-                        crate::platform::windows::portable_service_logon_helper_paths()
-                    {
-                        let cleanup_helper_artifacts = || {
-                            if Path::new(&exe) != dst {
-                                std::fs::remove_file(&dst).ok();
-                            }
-                            std::fs::remove_dir(&dir).ok();
-                        };
-                        let mut use_logon_helper_exe = false;
-                        if let Err(err) = std::fs::create_dir_all(&dir) {
-                            log::warn!(
-                                "Failed to create portable service logon helper dir {:?}: {}",
-                                dir,
-                                err
-                            );
-                        } else if let Err(err) = std::fs::copy(&exe, &dst) {
-                            log::warn!(
-                                "Failed to copy portable service logon helper binary from '{}' to {:?}: {}",
-                                exe,
-                                dst,
-                                err
-                            );
-                            cleanup_helper_artifacts();
-                        } else if !dst.exists() {
-                            log::warn!(
-                                "Portable service logon helper binary missing after copy: {:?}",
-                                dst
-                            );
-                            cleanup_helper_artifacts();
-                        } else if let Err(err) =
-                            set_path_permission(&dir, FILE_GENERIC_READ.0 | FILE_GENERIC_EXECUTE.0)
-                        {
-                            log::warn!(
-                                "Failed to set portable service logon helper path permission for {:?}: {}",
-                                dir,
-                                err
-                            );
-                            cleanup_helper_artifacts();
-                        } else {
-                            use_logon_helper_exe = true;
-                        }
-                        if use_logon_helper_exe {
-                            exe = dst.to_string_lossy().to_string();
-                        }
-                    }
-                    if let Err(e) = crate::platform::windows::create_process_with_logon(
-                        username.as_str(),
-                        password.as_str(),
-                        &exe,
-                        &portable_service_arg,
-                    ) {
-                        clear_runtime_shmem_state();
-                        bail!("Failed to run portable service process: {}", e);
-                    }
                 }
             }
             schedule_starting_timeout_reset(launch_token);
