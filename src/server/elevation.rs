@@ -8,6 +8,8 @@
 use base::message_proto::{
     elevation_request, elevation_status::State, ElevationRequest, ElevationStatus, Message, Misc,
 };
+#[cfg(windows)]
+use hbb_common::tokio;
 use serde_derive::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 

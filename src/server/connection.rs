@@ -4591,7 +4591,8 @@ impl Connection {
     /// person at the machine.
     #[cfg(windows)]
     async fn request_elevation(&mut self) {
-        use super::elevation::{check_request, create_in_service, status, Action, State, NOT_AVAILABLE};
+        use super::elevation::{check_request, create_in_service, status, Action, NOT_AVAILABLE};
+        use base::message_proto::elevation_status::State;
         let uac_ok = crate::platform::windows::uac_allows_elevation();
         let actions = match check_request(self.keyboard, self.elevation.busy(), uac_ok) {
             Err(why) => vec![Action::Controller(status(State::Denied, why))],
