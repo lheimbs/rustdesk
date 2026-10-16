@@ -26,7 +26,10 @@ use std::{
     path::{Path, PathBuf},
 };
 #[cfg(windows)]
-use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeClientProcessId};
+use windows::Win32::{
+    Foundation::HANDLE,
+    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+};
 
 #[cfg(windows)]
 #[inline]
@@ -726,6 +729,21 @@ where
 
     pub(super) fn peer_pid(&self) -> Option<u32> {
         peer_pid_from_fd(self.inner.get_ref().as_raw_fd())
+    }
+}
+
+#[cfg(windows)]
+impl ConnectionTmpl<parity_tokio_ipc::ConnectionClient> {
+    /// The process that created the pipe this client is connected to.
+    pub(crate) fn server_pid(&self) -> Option<u32> {
+        let pipe_handle = self.inner.get_ref().as_raw_handle();
+        if pipe_handle.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        let ok = unsafe { GetNamedPipeServerProcessId(HANDLE(pipe_handle), &mut pid as *mut u32) }
+            .is_ok();
+        (ok && pid != 0).then_some(pid)
     }
 }
 

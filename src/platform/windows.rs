@@ -703,6 +703,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     let _ = (Config::get_id(), Config::get_key_pair());
     let mut broker_limit = crate::server::sign_broker::RateLimit::new(Instant::now());
     let mut elevation_requests = crate::server::elevation_grant::Requests::default();
+    let mut elevation_helper: HANDLE = NULL;
     let mut session_id = unsafe { get_current_session(share_rdp()) };
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
@@ -714,6 +715,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
         if let Some(conn_id) = elevation_requests.check_owner(server_pid, session_id) {
             log::info!("elevation: administrator access of connection {} ended: the session or its server changed", conn_id);
         }
+        stop_elevation_helper_without_grant(&mut elevation_helper, &mut elevation_requests);
         let sids: Vec<_> = get_available_sessions(false)
             .iter()
             .map(|e| e.sid)
@@ -768,8 +770,10 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                     h_process,
                                     session_id,
                                     &mut elevation_requests,
+                                    &mut elevation_helper,
                                 );
                                 allow_err!(stream.send(&ipc::Data::ElevationReply(reply)).await);
+                                stop_elevation_helper_without_grant(&mut elevation_helper, &mut elevation_requests);
                             }
                             ipc::Data::UserSid(usid) => {
                                 if let Some(usid) = usid {
@@ -886,6 +890,7 @@ fn serve_elevation_request(
     launched: HANDLE,
     session_id: u32,
     requests: &mut crate::server::elevation_grant::Requests,
+    helper: &mut HANDLE,
 ) -> crate::server::elevation_grant::ServiceReply {
     use crate::server::elevation_grant::{new_nonce, ServiceReply, ServiceRequest};
     let launched_pid = if launched.is_null() {
@@ -908,6 +913,34 @@ fn serve_elevation_request(
             reply
         }
         ServiceRequest::Cancel { nonce } if from_server => requests.cancel(&nonce),
+        ServiceRequest::StartHelper { nonce, shmem_name } if from_server => {
+            if !requests.is_granted_to(&nonce, Instant::now()) {
+                return ServiceReply::Denied("no administrator access granted".to_owned());
+            }
+            if !crate::portable_service::is_valid_portable_service_shmem_name(&shmem_name) {
+                return ServiceReply::Denied("invalid shared memory name".to_owned());
+            }
+            if !helper.is_null() {
+                return ServiceReply::Denied("the helper is already running".to_owned());
+            }
+            // SYSTEM with the winlogon token in the user's session (E1, plan 2s): the only token that reaches the
+            // secure desktop. It obeys only the server this service launched (its pid, held open by the service).
+            let cmd = format!(
+                "\"{}\" --portable-service {} {}{}",
+                std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                crate::portable_service::portable_service_shmem_arg(&shmem_name),
+                crate::portable_service::SERVER_PID_ARG_PREFIX,
+                launched_pid
+            );
+            match launch_privileged_process(session_id, &cmd) {
+                Ok(h) if !h.is_null() => {
+                    *helper = h;
+                    log::info!("elevation: helper started (pid {}) for {}", unsafe { GetProcessId(h) }, requests.describe());
+                    ServiceReply::Done
+                }
+                Ok(_) | Err(_) => ServiceReply::Denied("the helper could not be started".to_owned()),
+            }
+        }
         ServiceRequest::Poll { nonce } if from_server => requests.poll(&nonce, Instant::now()),
         ServiceRequest::End { nonce } if from_server => {
             let was = requests.describe();
@@ -953,6 +986,28 @@ fn serve_elevation_request(
             );
             ServiceReply::Denied("the caller is not the server of this session".to_owned())
         }
+    }
+}
+
+/// No helper without a grant (E9): when the grant is gone or the helper exited, end and forget it.
+fn stop_elevation_helper_without_grant(
+    helper: &mut HANDLE,
+    requests: &mut crate::server::elevation_grant::Requests,
+) {
+    if helper.is_null() {
+        return;
+    }
+    use winapi::um::{processthreadsapi::TerminateProcess, synchapi::WaitForSingleObject};
+    let exited = unsafe { WaitForSingleObject(*helper, 0) } == 0; // WAIT_OBJECT_0
+    if exited || !requests.is_granted(Instant::now()) {
+        unsafe {
+            if !exited {
+                TerminateProcess(*helper, 0);
+            }
+            log::info!("elevation: helper (pid {}) {}", GetProcessId(*helper), if exited { "exited" } else { "stopped" });
+            CloseHandle(*helper);
+        }
+        *helper = NULL;
     }
 }
 

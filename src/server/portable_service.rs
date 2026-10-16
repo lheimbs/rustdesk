@@ -57,6 +57,8 @@ const MIN_RUNTIME_SHMEM_LEN: usize = ADDR_CAPTURE_FRAME + FRAME_ALIGN;
 const IPC_SUFFIX: &str = "_portable_service";
 pub const SHMEM_NAME: &str = "_portable_service";
 pub const SHMEM_ARG_PREFIX: &str = "--portable-service-shmem-name=";
+/// Handover: the pid of the user-level server whose pipe the helper may obey (set by the service, elevation E9).
+pub const SERVER_PID_ARG_PREFIX: &str = "--portable-service-server-pid=";
 const SHMEM_PARENT_DIR: &str = "portable_service_shmem";
 const SHMEM_NAME_MAX_LEN: usize = 64;
 const MAX_NACK: usize = 3;
@@ -64,7 +66,7 @@ const PORTABLE_SERVICE_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_DXGI_FAIL_TIME: usize = 5;
 
 #[inline]
-fn is_valid_portable_service_shmem_name(name: &str) -> bool {
+pub(crate) fn is_valid_portable_service_shmem_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= SHMEM_NAME_MAX_LEN
         && name
@@ -732,6 +734,22 @@ pub mod server {
 
         match ipc::connect(1000, postfix).await {
             Ok(mut stream) => {
+                // Handover (elevation E9): this SYSTEM helper obeys the pipe's owner, so it must be the very server
+                // the service started it for, not a process of the user that took the pipe name first.
+                let expected = std::env::args().find_map(|a| {
+                    a.strip_prefix(super::SERVER_PID_ARG_PREFIX)
+                        .and_then(|v| v.parse::<u32>().ok())
+                });
+                let owner = stream.server_pid();
+                if expected.is_none() || owner != expected {
+                    log::error!(
+                        "portable service: the pipe belongs to pid {:?}, expected {:?}; exiting",
+                        owner,
+                        expected
+                    );
+                    *EXIT.lock().unwrap() = true;
+                    return;
+                }
                 if let Err(err) =
                     ipc::portable_service_ipc_handshake_as_client(&mut stream, &ipc_token).await
                 {
@@ -844,6 +862,8 @@ pub mod client {
     pub enum StartPara {
         Direct,
         Logon(String, String),
+        /// Handover (elevation E9): the service starts the helper as SYSTEM for the grant with this nonce.
+        Service(String),
     }
 
     fn has_running_portable_service_process() -> bool {
@@ -1092,6 +1112,16 @@ pub mod client {
                             bail!("Failed to run portable service process: {}", e);
                         }
                     }
+                }
+                StartPara::Service(nonce) => {
+                    let shmem_name = shmem_name.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = crate::server::elevation::start_helper_in_service(nonce, shmem_name) {
+                            log::error!("elevation: the service did not start the helper: {}", e);
+                            clear_runtime_shmem_state();
+                            *STARTING.lock().unwrap() = false;
+                        }
+                    });
                 }
                 StartPara::Logon(username, password) => {
                     #[allow(unused_mut)]

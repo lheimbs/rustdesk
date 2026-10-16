@@ -29,6 +29,8 @@ pub enum ServiceRequest {
     Poll { nonce: String },
     /// From the user-level server: the grant ends (drop, local stop, time limit, connection closed).
     End { nonce: String },
+    /// From the user-level server: start the privileged helper (E9) for this grant on its shared memory.
+    StartHelper { nonce: String, shmem_name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -178,6 +180,11 @@ impl Requests {
             (None, Some(p)) => format!("connection {}, controller serial {}", p.conn_id, p.serial),
             _ => String::new(),
         }
+    }
+
+    pub fn is_granted_to(&mut self, nonce: &str, now: Instant) -> bool {
+        self.expire(now);
+        self.grant.as_ref().map_or(false, |g| g.nonce == nonce)
     }
 
     pub fn is_granted(&mut self, now: Instant) -> bool {

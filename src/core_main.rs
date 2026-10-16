@@ -262,12 +262,22 @@ pub fn core_main() -> Option<Vec<String>> {
                     .show()
                     .ok();
                 return None;
+            } else if args[0] == "--portable-service" {
+                // Handover (elevation E9): only the helper the service starts for a grant, as SYSTEM, told the
+                // pid of the server it may obey; any other start does nothing.
+                if platform::is_root()
+                    && args
+                        .iter()
+                        .any(|a| a.starts_with(crate::portable_service::SERVER_PID_ARG_PREFIX))
+                {
+                    crate::portable_service::server::run_portable_service();
+                }
+                return None;
             } else if matches!(
                 args[0].as_str(),
                 "--uninstall-cert"
                     | "--install-idd"
                     | "--uninstall-amyuni-idd"
-                    | "--portable-service"
                     | "--install-remote-printer"
                     | "--uninstall-remote-printer"
             ) {

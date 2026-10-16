@@ -27,7 +27,8 @@ fn evaluate() -> bool {
     #[cfg(windows)]
     {
         let user_level = hbb_common::config::Config::is_brokered_identity();
-        if !user_level {
+        // Tier 1 (elevation E9): the SYSTEM helper captures and injects, the secure desktop is no longer out of reach.
+        if !user_level || crate::portable_service::client::running() {
             return false;
         }
         decide(

@@ -4638,6 +4638,11 @@ impl Connection {
                 Action::Controller(status) => self.send(message(status)).await,
                 Action::Cm(m) => self.send_to_cm(ipc::Data::ElevationCm(m)),
                 Action::Withdraw(nonce) => withdraw_in_service(nonce),
+                Action::StartHelper(nonce) => {
+                    if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Service(nonce)) {
+                        log::error!("elevation: the helper could not be prepared: {}", e);
+                    }
+                }
                 Action::Log(event, detail) => super::connection_log::record(
                     self.inner.id(),
                     event,

@@ -95,6 +95,8 @@ pub enum Action {
     Withdraw(String),
     /// A line for the local connection log (F9).
     Log(&'static str, String),
+    /// Start the privileged helper for this grant (E9).
+    StartHelper(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -180,6 +182,7 @@ impl ConnElevation {
                     return vec![];
                 }
                 current.phase = Phase::Granted;
+                let nonce = current.nonce.clone();
                 let mut granted = status(State::Granted, "");
                 granted.expires_in_secs = secs_left as u32;
                 vec![
@@ -188,6 +191,7 @@ impl ConnElevation {
                         minutes_left: (secs_left + 59) / 60,
                     }),
                     Action::Log("elevation-granted", format!("approved by {}", account)),
+                    Action::StartHelper(nonce),
                 ]
             }
             (Phase::Allowed, Some(ServiceReply::Waiting)) => vec![],
@@ -266,6 +270,17 @@ pub fn withdraw_in_service(nonce: String) {
             hbb_common::log::warn!("elevation: could not end a request or grant in the service: {}", err);
         }
     });
+}
+
+/// Runs on its own thread (from the proxy's start): asks the service to start the helper on this shared memory.
+#[cfg(windows)]
+#[tokio::main(flavor = "current_thread")]
+pub async fn start_helper_in_service(nonce: String, shmem_name: String) -> hbb_common::ResultType<()> {
+    use super::elevation_grant::ServiceRequest;
+    match call_service(ServiceRequest::StartHelper { nonce, shmem_name }).await? {
+        ServiceReply::Done => Ok(()),
+        other => hbb_common::bail!("{:?}", other),
+    }
 }
 
 /// The service's view of a request or grant; `None` if it cannot be asked (treated as "gone" for a grant).
@@ -418,6 +433,7 @@ mod tests {
         assert!(a.iter().any(|a| matches!(a, Action::Controller(s) if s.expires_in_secs == secs_left as u32)));
         assert!(a.contains(&Action::Cm(CmMessage::Active { minutes_left: (secs_left + 59) / 60 })));
         assert!(a.contains(&Action::Log("elevation-granted", "approved by PC\\admin".into())));
+        assert!(a.contains(&Action::StartHelper("n".into())), "the grant starts the helper (E9)");
     }
 
     #[test]
