@@ -965,6 +965,11 @@ impl Connection {
                             conn.run_elevation_actions(actions).await;
                         }
                         #[cfg(windows)]
+                        ipc::Data::ElevationCm(super::elevation::CmMessage::Stop) => {
+                            let actions = conn.elevation.stopped();
+                            conn.run_elevation_actions(actions).await;
+                        }
+                        #[cfg(windows)]
                         ipc::Data::DataPortableService(ipc::DataPortableService::RequestStart) => {
                             if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
                                 log::error!("Failed to start portable service from cm: {:?}", e);
@@ -1166,7 +1171,11 @@ impl Connection {
                     conn.portable_check();
                     #[cfg(windows)]
                     {
-                        let actions = conn.elevation.tick(std::time::Instant::now());
+                        let mut actions = conn.elevation.tick(std::time::Instant::now());
+                        if let Some(nonce) = conn.elevation.poll_target() {
+                            let reply = super::elevation::poll_service(nonce).await;
+                            actions.extend(conn.elevation.polled(reply, std::time::Instant::now()));
+                        }
                         conn.run_elevation_actions(actions).await;
                     }
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
@@ -3882,8 +3891,14 @@ impl Connection {
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::ElevationDrop(_)) => {
-                        let status = super::elevation::answer_drop();
-                        self.send(super::elevation::message(status)).await;
+                        #[cfg(windows)]
+                        {
+                            let actions = self.elevation.dropped();
+                            self.run_elevation_actions(actions).await;
+                        }
+                        #[cfg(not(windows))]
+                        self.send(super::elevation::message(super::elevation::answer_drop()))
+                            .await;
                     }
                     Some(misc::Union::AudioFormat(format)) => {
                         if !self.disable_audio {
@@ -4617,12 +4632,17 @@ impl Connection {
 
     #[cfg(windows)]
     async fn run_elevation_actions(&mut self, actions: Vec<super::elevation::Action>) {
-        use super::elevation::{cancel_in_service, message, Action};
+        use super::elevation::{message, withdraw_in_service, Action};
         for action in actions {
             match action {
                 Action::Controller(status) => self.send(message(status)).await,
                 Action::Cm(m) => self.send_to_cm(ipc::Data::ElevationCm(m)),
-                Action::Cancel(nonce) => cancel_in_service(nonce),
+                Action::Withdraw(nonce) => withdraw_in_service(nonce),
+                Action::Log(event, detail) => super::connection_log::record(
+                    self.inner.id(),
+                    event,
+                    &format!("{} {}", self.lr.my_id, detail),
+                ),
             }
         }
     }

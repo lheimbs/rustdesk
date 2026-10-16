@@ -195,8 +195,9 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
 
     fn show_elevation(&self, show: bool);
 
-    /// Show (or hide) a controller's request for administrator access (elevation spec F4).
-    fn elevation_request(&self, _id: i32, _show: bool, _minutes: u64) {}
+    /// A connection's administrator access for the UI: `state` is "request" (ask the person), "active" (granted,
+    /// `minutes` left) or "none" (elevation spec F4, F9).
+    fn elevation_state(&self, _id: i32, _state: &str, _minutes: u64) {}
 
     fn update_voice_call_state(&self, client: &Client);
 
@@ -1737,13 +1738,14 @@ fn elevation_from_server<T: InvokeUiCM>(
     match message {
         CmMessage::Prompt { nonce, minutes, .. } => {
             ELEVATION_NONCES.lock().unwrap().insert(id, nonce);
-            cm.elevation_request(id, true, minutes);
+            cm.elevation_state(id, "request", minutes);
         }
+        CmMessage::Active { minutes_left } => cm.elevation_state(id, "active", minutes_left),
         CmMessage::Close => {
             ELEVATION_NONCES.lock().unwrap().remove(&id);
-            cm.elevation_request(id, false, 0);
+            cm.elevation_state(id, "none", 0);
         }
-        CmMessage::Decision { .. } => {}
+        CmMessage::Decision { .. } | CmMessage::Stop => {}
     }
 }
 
@@ -1771,6 +1773,12 @@ pub fn elevation_decision(_id: i32, _allow: bool) {
             );
         });
     }
+}
+
+/// The person ends administrator access from the connection manager (spec S8).
+pub fn elevation_stop(_id: i32) {
+    #[cfg(windows)]
+    cm_inner_send(_id, Data::ElevationCm(crate::server::elevation::CmMessage::Stop));
 }
 
 pub fn can_elevate() -> bool {

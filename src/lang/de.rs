@@ -802,5 +802,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Administrator access needs Windows UAC with a prompt on the secure desktop", "Administratorzugriff erfordert die Windows-Benutzerkontensteuerung mit Abfrage auf dem sicheren Desktop"),
         ("The person at the remote machine denied administrator access", "Die Person am entfernten Gerät hat den Administratorzugriff abgelehnt"),
         ("The Windows prompt was declined", "Die Windows-Abfrage wurde abgelehnt"),
+        ("elevation_active_tip", "Administratorzugriff ist aktiv (noch {} Minuten). Das steuernde Gerät kann Windows-Abfragen und den Sperrbildschirm sehen und bedienen."),
+        ("Stop administrator access", "Administratorzugriff beenden"),
     ].iter().cloned().collect();
 }

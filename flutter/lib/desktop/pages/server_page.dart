@@ -1008,6 +1008,27 @@ class _CmControlPanel extends StatelessWidget {
           ),
         ),
         Obx(() {
+          final minutesLeft = model.elevationActive[client.id];
+          if (minutesLeft == null) return const Offstage();
+          return Column(
+            children: [
+              Text(
+                translate('elevation_active_tip')
+                    .replaceAll('{}', minutesLeft.toString()),
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold),
+              ).marginOnly(bottom: buttonBottomMargin),
+              buildButton(context,
+                  color: Colors.orange[800],
+                  onClick: () => model.stopElevation(client.id),
+                  icon: Icon(Icons.remove_moderator_rounded,
+                      color: Colors.white, size: 14),
+                  text: 'Stop administrator access',
+                  textColor: Colors.white),
+            ],
+          );
+        }),
+        Obx(() {
           final minutes = model.elevationRequests[client.id];
           if (minutes == null) return const Offstage();
           return Column(

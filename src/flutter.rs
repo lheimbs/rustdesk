@@ -1552,12 +1552,12 @@ pub mod connection_manager {
             self.push_event("show_elevation", &[("show", &show.to_string())]);
         }
 
-        fn elevation_request(&self, id: i32, show: bool, minutes: u64) {
+        fn elevation_state(&self, id: i32, state: &str, minutes: u64) {
             self.push_event(
-                "elevation_request",
+                "elevation_state",
                 &[
                     ("id", &id.to_string()),
-                    ("show", &show.to_string()),
+                    ("state", &state.to_owned()),
                     ("minutes", &minutes.to_string()),
                 ],
             );

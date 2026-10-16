@@ -398,8 +398,8 @@ class FfiModel with ChangeNotifier {
         updateBlockInputState(evt, peerId);
       } else if (name == 'update_privacy_mode') {
         updatePrivacyMode(evt, sessionId, peerId);
-      } else if (name == 'elevation_request') {
-        parent.target?.serverModel.updateElevationRequest(evt);
+      } else if (name == 'elevation_state') {
+        parent.target?.serverModel.updateElevationState(evt);
       } else if (name == 'show_elevation') {
         final show = evt['show'].toString() == 'true';
         parent.target?.serverModel.setShowElevation(show);

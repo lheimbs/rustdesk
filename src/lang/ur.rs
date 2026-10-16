@@ -802,6 +802,8 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Administrator access needs Windows UAC with a prompt on the secure desktop", ""),
         ("The person at the remote machine denied administrator access", ""),
         ("The Windows prompt was declined", ""),
+        ("elevation_active_tip", ""),
+        ("Stop administrator access", ""),
     ].iter().cloned().collect();
 }
 

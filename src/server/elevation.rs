@@ -10,6 +10,7 @@ use base::message_proto::{
 };
 #[cfg(windows)]
 use hbb_common::tokio;
+use super::elevation_grant::ServiceReply;
 use serde_derive::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -75,10 +76,14 @@ pub fn answer_request(request: &ElevationRequest) -> ElevationStatus {
 pub enum CmMessage {
     /// Show the request: the person has `decision_secs` to answer; `minutes` is the grant's time limit.
     Prompt { nonce: String, decision_secs: u64, minutes: u64 },
-    /// The request is over; hide it.
+    /// Administrator access is active for `minutes_left` more minutes; show it and a Stop button (F9, S8).
+    Active { minutes_left: u64 },
+    /// The request or grant is over; hide it.
     Close,
     /// The person's answer; `uac_declined` when Allow was pressed but the Windows prompt was refused.
     Decision { allow: bool, uac_declined: bool },
+    /// The person ends administrator access.
+    Stop,
 }
 
 /// What the connection has to do after an event of the flow.
@@ -86,82 +91,155 @@ pub enum CmMessage {
 pub enum Action {
     Controller(ElevationStatus),
     Cm(CmMessage),
-    /// Withdraw the request from the service.
-    Cancel(String),
+    /// Withdraw the request or end the grant in the service.
+    Withdraw(String),
+    /// A line for the local connection log (F9).
+    Log(&'static str, String),
 }
 
-/// Grant time limit shown to the person (spec F6 default; the service enforces it with E8).
-pub const GRANT_MINUTES: u64 = 30;
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Phase {
+    /// Waiting for the person's Allow or Deny.
+    Asked,
+    /// Allow pressed and the UAC prompt passed: waiting for the service to accept the proof.
+    Allowed,
+    Granted,
+}
 
 #[derive(Debug)]
-struct PendingRequest {
+struct Current {
     nonce: String,
+    phase: Phase,
+    /// End of the current phase: the decision time, the proof time, or the grant's time limit.
     deadline: Instant,
-    allowed: bool,
 }
 
-/// One connection's request: created after the service accepted it, ended by the person's answer, the Windows
-/// prompt, a timeout or the connection closing.
+/// One connection's request and grant (spec 4.3/4.4): created after the service accepted the request, ended by
+/// the person's answer, the Windows prompt, a time limit, the controller's drop, the local Stop, the service, or
+/// the connection closing.
 #[derive(Debug, Default)]
 pub struct ConnElevation {
-    pending: Option<PendingRequest>,
+    current: Option<Current>,
 }
 
 impl ConnElevation {
     pub fn busy(&self) -> bool {
-        self.pending.is_some()
+        self.current.is_some()
+    }
+
+    /// The nonce to ask the service about: while it checks a proof, and during a grant.
+    pub fn poll_target(&self) -> Option<String> {
+        self.current
+            .as_ref()
+            .filter(|c| c.phase != Phase::Asked)
+            .map(|c| c.nonce.clone())
     }
 
     pub fn created(&mut self, nonce: String, now: Instant) -> Vec<Action> {
-        self.pending = Some(PendingRequest {
+        self.current = Some(Current {
             nonce: nonce.clone(),
+            phase: Phase::Asked,
             deadline: now + Duration::from_secs(DECISION_SECS),
-            allowed: false,
         });
         vec![
             Action::Controller(status(State::Requested, "")),
             Action::Cm(CmMessage::Prompt {
                 nonce,
                 decision_secs: DECISION_SECS,
-                minutes: GRANT_MINUTES,
+                minutes: super::elevation_grant::grant_minutes(),
             }),
+            Action::Log("elevation-requested", String::new()),
         ]
     }
 
     pub fn decision(&mut self, allow: bool, uac_declined: bool, now: Instant) -> Vec<Action> {
-        let Some(pending) = self.pending.as_mut() else {
+        let Some(current) = self.current.as_mut().filter(|c| c.phase == Phase::Asked) else {
             return vec![];
         };
         if allow && !uac_declined {
-            // The proof is on its way to the service; the grant (E8) ends the wait, the deadline bounds it.
-            pending.allowed = true;
-            pending.deadline = now + Duration::from_secs(PROOF_SECS);
+            current.phase = Phase::Allowed;
+            current.deadline = now + Duration::from_secs(PROOF_SECS);
             return vec![Action::Cm(CmMessage::Close)];
         }
         let reason = if uac_declined { UAC_DECLINED } else { DENIED_LOCALLY };
-        self.end(State::Denied, reason)
+        self.end(State::Denied, reason, "elevation-denied")
     }
 
-    pub fn tick(&mut self, now: Instant) -> Vec<Action> {
-        match self.pending.as_ref() {
-            Some(p) if now >= p.deadline => self.end(State::Expired, ""),
+    /// The service's answer to a poll; `None` when the service could not be asked.
+    pub fn polled(&mut self, reply: Option<ServiceReply>, now: Instant) -> Vec<Action> {
+        let Some(phase) = self.current.as_ref().map(|c| c.phase) else {
+            return vec![];
+        };
+        match (phase, reply) {
+            (Phase::Allowed | Phase::Granted, Some(ServiceReply::Granted { secs_left, account })) => {
+                let Some(current) = self.current.as_mut() else {
+                    return vec![];
+                };
+                current.deadline = now + Duration::from_secs(secs_left);
+                if phase == Phase::Granted {
+                    return vec![];
+                }
+                current.phase = Phase::Granted;
+                let mut granted = status(State::Granted, "");
+                granted.expires_in_secs = secs_left as u32;
+                vec![
+                    Action::Controller(granted),
+                    Action::Cm(CmMessage::Active {
+                        minutes_left: (secs_left + 59) / 60,
+                    }),
+                    Action::Log("elevation-granted", format!("approved by {}", account)),
+                ]
+            }
+            (Phase::Allowed, Some(ServiceReply::Waiting)) => vec![],
+            // A grant the service no longer knows (sign-out, user switch, service restart) or cannot confirm
+            // is over: fail closed.
+            (Phase::Granted, _) => self.end(State::Revoked, "", "elevation-revoked"),
             _ => vec![],
         }
     }
 
+    pub fn tick(&mut self, now: Instant) -> Vec<Action> {
+        match self.current.as_ref() {
+            Some(c) if now >= c.deadline => self.end(State::Expired, "", "elevation-expired"),
+            _ => vec![],
+        }
+    }
+
+    /// The controller gives up administrator access (or withdraws its request).
+    pub fn dropped(&mut self) -> Vec<Action> {
+        let mut actions = self.end(State::None, "", "elevation-dropped");
+        if actions.is_empty() {
+            actions.push(Action::Controller(status(State::None, "")));
+        }
+        actions
+    }
+
+    /// The person at the machine stops administrator access (CM Stop).
+    pub fn stopped(&mut self) -> Vec<Action> {
+        if self.current.as_ref().map_or(true, |c| c.phase != Phase::Granted) {
+            return vec![];
+        }
+        self.end(State::Revoked, "", "elevation-stopped")
+    }
+
     pub fn closed(&mut self) -> Vec<Action> {
-        match self.pending.take() {
-            Some(p) => vec![Action::Cancel(p.nonce), Action::Cm(CmMessage::Close)],
+        match self.current.take() {
+            Some(c) => vec![
+                Action::Withdraw(c.nonce),
+                Action::Cm(CmMessage::Close),
+                Action::Log("elevation-ended", "connection closed".to_owned()),
+            ],
             None => vec![],
         }
     }
 
-    fn end(&mut self, state: State, reason: &str) -> Vec<Action> {
-        match self.pending.take() {
-            Some(p) => vec![
-                Action::Cancel(p.nonce),
+    fn end(&mut self, state: State, reason: &str, event: &'static str) -> Vec<Action> {
+        match self.current.take() {
+            Some(c) => vec![
+                Action::Withdraw(c.nonce),
                 Action::Cm(CmMessage::Close),
                 Action::Controller(status(state, reason)),
+                Action::Log(event, reason.to_owned()),
             ],
             None => vec![],
         }
@@ -181,13 +259,20 @@ pub async fn create_in_service(conn_id: i32, serial: u64) -> Result<String, Stri
 }
 
 #[cfg(windows)]
-pub fn cancel_in_service(nonce: String) {
+pub fn withdraw_in_service(nonce: String) {
     use super::elevation_grant::ServiceRequest;
     tokio::spawn(async move {
-        if let Err(err) = call_service(ServiceRequest::Cancel { nonce }).await {
-            hbb_common::log::warn!("elevation: could not withdraw a request from the service: {}", err);
+        if let Err(err) = call_service(ServiceRequest::End { nonce }).await {
+            hbb_common::log::warn!("elevation: could not end a request or grant in the service: {}", err);
         }
     });
+}
+
+/// The service's view of a request or grant; `None` if it cannot be asked (treated as "gone" for a grant).
+#[cfg(windows)]
+pub async fn poll_service(nonce: String) -> Option<ServiceReply> {
+    use super::elevation_grant::ServiceRequest;
+    call_service(ServiceRequest::Poll { nonce }).await.ok()
 }
 
 #[cfg(windows)]
@@ -285,7 +370,7 @@ mod tests {
 
         let a = flow.decision(false, false, t0);
         assert_eq!(controller_states(&a), vec![State::Denied]);
-        assert!(a.contains(&Action::Cancel("n".into())));
+        assert!(a.contains(&Action::Withdraw("n".into())));
         assert!(!flow.busy());
 
         flow.created("n".into(), t0);
@@ -312,7 +397,72 @@ mod tests {
         assert_eq!(controller_states(&a), vec![State::Expired]);
         assert_eq!(flow.decision(true, false, later), vec![], "an answer after the end is ignored");
         flow.created("m".into(), t0);
-        assert_eq!(flow.closed(), vec![Action::Cancel("m".into()), Action::Cm(CmMessage::Close)]);
+        let a = flow.closed();
+        assert!(a.contains(&Action::Withdraw("m".into())) && a.contains(&Action::Cm(CmMessage::Close)));
+        assert!(!flow.busy());
+    }
+
+    fn granted(flow: &mut ConnElevation, t0: Instant, secs_left: u64) {
+        flow.created("n".into(), t0);
+        flow.decision(true, false, t0);
+        assert_eq!(flow.poll_target(), Some("n".into()));
+        assert_eq!(flow.polled(Some(ServiceReply::Waiting), t0), vec![]);
+        let a = flow.polled(
+            Some(ServiceReply::Granted {
+                secs_left,
+                account: "PC\\admin".into(),
+            }),
+            t0,
+        );
+        assert_eq!(controller_states(&a), vec![State::Granted]);
+        assert!(a.iter().any(|a| matches!(a, Action::Controller(s) if s.expires_in_secs == secs_left as u32)));
+        assert!(a.contains(&Action::Cm(CmMessage::Active { minutes_left: (secs_left + 59) / 60 })));
+        assert!(a.contains(&Action::Log("elevation-granted", "approved by PC\\admin".into())));
+    }
+
+    #[test]
+    fn a_grant_ends_by_time_limit_drop_local_stop_or_the_service() {
+        let t0 = Instant::now();
+        let mut flow = ConnElevation::default();
+        granted(&mut flow, t0, 1800);
+        assert_eq!(flow.tick(t0 + Duration::from_secs(1799)), vec![]);
+        let a = flow.tick(t0 + Duration::from_secs(1800));
+        assert_eq!(controller_states(&a), vec![State::Expired]);
+        assert!(a.contains(&Action::Withdraw("n".into())));
+
+        granted(&mut flow, t0, 1800);
+        assert_eq!(controller_states(&flow.dropped()), vec![State::None]);
+        assert!(!flow.busy());
+
+        granted(&mut flow, t0, 1800);
+        assert_eq!(controller_states(&flow.stopped()), vec![State::Revoked]);
+
+        granted(&mut flow, t0, 1800);
+        let a = flow.polled(Some(ServiceReply::Gone("ended".into())), t0);
+        assert_eq!(controller_states(&a), vec![State::Revoked]);
+
+        granted(&mut flow, t0, 1800);
+        let a = flow.polled(None, t0);
+        assert_eq!(controller_states(&a), vec![State::Revoked], "service unreachable: fail closed");
+    }
+
+    #[test]
+    fn out_of_order_messages_change_nothing() {
+        let t0 = Instant::now();
+        let mut flow = ConnElevation::default();
+        assert_eq!(flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new() }), t0), vec![]);
+        assert_eq!(flow.stopped(), vec![]);
+        assert_eq!(flow.decision(true, false, t0), vec![]);
+        flow.created("n".into(), t0);
+        assert_eq!(flow.poll_target(), None, "nothing to poll before Allow");
+        assert_eq!(
+            flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new() }), t0),
+            vec![],
+            "a grant before Allow is ignored"
+        );
+        assert_eq!(flow.stopped(), vec![], "Stop only ends a grant");
+        assert!(flow.busy());
+        assert_eq!(controller_states(&flow.dropped()), vec![State::None], "the controller withdraws its request");
     }
 
     #[test]

@@ -710,6 +710,10 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
     let mut stored_usid = None;
     loop {
+        let server_pid = if h_process.is_null() { 0 } else { unsafe { GetProcessId(h_process) } };
+        if let Some(conn_id) = elevation_requests.check_owner(server_pid, session_id) {
+            log::info!("elevation: administrator access of connection {} ended: the session or its server changed", conn_id);
+        }
         let sids: Vec<_> = get_available_sessions(false)
             .iter()
             .map(|e| e.sid)
@@ -892,7 +896,7 @@ fn serve_elevation_request(
     let from_server = launched_pid != 0 && peer_pid == Some(launched_pid);
     match request {
         ServiceRequest::Create { conn_id, serial } if from_server => {
-            let reply = requests.create(conn_id, serial, session_id, new_nonce(), Instant::now());
+            let reply = requests.create(conn_id, serial, launched_pid, session_id, new_nonce(), Instant::now());
             hbb_common::throttled_log!(
                 Duration::from_secs(10),
                 info,
@@ -904,9 +908,41 @@ fn serve_elevation_request(
             reply
         }
         ServiceRequest::Cancel { nonce } if from_server => requests.cancel(&nonce),
-        ServiceRequest::Proof { .. } => {
-            log::warn!("elevation: a proof arrived, but proofs are not verified yet (E8); refused");
-            ServiceReply::Denied("not supported".to_owned())
+        ServiceRequest::Poll { nonce } if from_server => requests.poll(&nonce, Instant::now()),
+        ServiceRequest::End { nonce } if from_server => {
+            let was = requests.describe();
+            let reply = requests.end(&nonce);
+            if !was.is_empty() && requests.describe().is_empty() {
+                log::info!("elevation: ended ({})", was);
+            }
+            reply
+        }
+        ServiceRequest::Proof { nonce } => {
+            // Any authorised peer of the service pipe (same session or SYSTEM, same program file) may send a
+            // proof; what makes it one is checked here (spec 4.4 step 6).
+            let Some(pid) = peer_pid else {
+                return ServiceReply::Denied("unknown caller".to_owned());
+            };
+            let facts = crate::server::elevation_grant::ProofFacts {
+                session_id: get_session_id_of_process(pid).unwrap_or(u32::MAX),
+                elevated: is_elevated(Some(pid)).unwrap_or(false),
+                account: process_account(pid).unwrap_or_else(|e| format!("unknown ({})", e)),
+            };
+            let reply = requests.prove(&nonce, &facts, Instant::now());
+            match &reply {
+                ServiceReply::Done => log::info!("elevation: granted ({})", requests.describe()),
+                ServiceReply::Denied(why) => hbb_common::throttled_log!(
+                    Duration::from_secs(5),
+                    warn,
+                    "elevation: refused a proof from pid {} (session {}, elevated {}): {}",
+                    pid,
+                    facts.session_id,
+                    facts.elevated,
+                    why
+                ),
+                _ => {}
+            }
+            reply
         }
         _ => {
             hbb_common::throttled_log!(
@@ -917,6 +953,46 @@ fn serve_elevation_request(
             );
             ServiceReply::Denied("the caller is not the server of this session".to_owned())
         }
+    }
+}
+
+/// `DOMAIN\\user` of a process's token user: the account that approved a UAC prompt, for the connection log.
+fn process_account(process_id: DWORD) -> ResultType<String> {
+    use windows::Win32::Security::{LookupAccountSidW, SID_NAME_USE};
+    unsafe {
+        let process = WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
+            .map_err(|e| anyhow!("Failed to open process {}: {}", process_id, e))?;
+        let mut token = WinHANDLE::default();
+        let result = (|| -> ResultType<String> {
+            WinOpenProcessToken(process, WIN_TOKEN_QUERY, &mut token)
+                .map_err(|e| anyhow!("Failed to open process {} token: {}", process_id, e))?;
+            let buffer = read_token_user_buffer(token, &format!("process {}", process_id))?;
+            let token_user: TOKEN_USER = std::ptr::read_unaligned(buffer.as_ptr() as *const TOKEN_USER);
+            let mut name = vec![0u16; 256];
+            let mut domain = vec![0u16; 256];
+            let (mut name_len, mut domain_len) = (name.len() as u32, domain.len() as u32);
+            let mut kind = SID_NAME_USE::default();
+            LookupAccountSidW(
+                windows::core::PCWSTR::null(),
+                token_user.User.Sid,
+                Some(windows::core::PWSTR(name.as_mut_ptr())),
+                &mut name_len,
+                Some(windows::core::PWSTR(domain.as_mut_ptr())),
+                &mut domain_len,
+                &mut kind,
+            )
+            .map_err(|e| anyhow!("Failed to look up the account of process {}: {}", process_id, e))?;
+            Ok(format!(
+                "{}\\{}",
+                String::from_utf16_lossy(&domain[..domain_len as usize]),
+                String::from_utf16_lossy(&name[..name_len as usize])
+            ))
+        })();
+        if !token.is_invalid() {
+            let _ = WinCloseHandle(token);
+        }
+        let _ = WinCloseHandle(process);
+        result
     }
 }
 
