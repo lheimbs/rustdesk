@@ -35,6 +35,9 @@ pub fn credential_path() -> PathBuf {
 
 /// Controller side: add the credential and the proof for this connection to the login request.
 pub fn attach(lr: &mut LoginRequest, hash: &Hash) {
+    if cfg!(feature = "lite") {
+        return;
+    }
     let path = credential_path();
     let Ok(text) = std::fs::read_to_string(&path) else {
         log::info!("no controller credential at {}", path.display());

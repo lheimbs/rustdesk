@@ -422,6 +422,9 @@ impl Client {
         (i32, String),
         bool,
     )> {
+        if cfg!(feature = "lite") {
+            bail!("This is a controlled-only installation");
+        }
         if config::is_incoming_only() && !is_switch_sides_back(conn_type, &interface).await {
             bail!("Incoming only mode");
         }

@@ -25,6 +25,10 @@ fn from_file(name: &str) -> Option<HolderFile> {
 }
 
 fn controller() -> Option<HolderFile> {
+    // A controlled-only build never reads, uses or sends a controller credential.
+    if cfg!(feature = "lite") {
+        return None;
+    }
     from_file("controller.cred")
 }
 
@@ -66,4 +70,21 @@ pub fn register_pk_context(id: &str, uuid: &[u8], pk: &[u8]) -> String {
 
 pub fn relay_request_context(peer_id: &str, uuid: &str) -> String {
     format!("{peer_id}\n{uuid}")
+}
+
+#[cfg(all(test, feature = "lite"))]
+mod lite_tests {
+    use super::*;
+
+    #[test]
+    fn a_controlled_only_build_never_makes_a_controller_token() {
+        assert_eq!(controller_token("punch", "any"), "");
+        assert!(controller().is_none());
+    }
+
+    #[test]
+    fn a_controlled_only_build_is_incoming_only_on_every_platform() {
+        assert!(hbb_common::config::is_incoming_only());
+        assert!(!hbb_common::config::is_outgoing_only());
+    }
 }

@@ -85,7 +85,9 @@ function Invoke-InVsEnv([string]$cmd) {
   if ($LASTEXITCODE -ne 0) { throw "failed: $cmd" }
 }
 
-Invoke-InVsEnv 'cargo build --locked --features flutter --lib --release'
+# HANDOVER_LITE=1: controlled-only build (docs/APPROVAL_SPEC.md section 6)
+$features = if ($env:HANDOVER_LITE) { 'flutter,lite' } else { 'flutter' }
+Invoke-InVsEnv "cargo build --locked --features $features --lib --release"
 if (-not (Test-Path target\release\librustdesk.dll)) { throw 'cargo build did not produce librustdesk.dll' }
 Push-Location flutter
 Invoke-InVsEnv 'flutter pub get --enforce-lockfile'

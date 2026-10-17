@@ -2868,21 +2868,24 @@ fn is_option_can_save(
 
 #[inline]
 pub fn is_incoming_only() -> bool {
-    HARD_SETTINGS
-        .read()
-        .unwrap()
-        .get("conn-type")
-        .map_or(false, |x| x == ("incoming"))
-}
-
-#[inline]
-pub fn is_outgoing_only() -> bool {
-    cfg!(target_os = "linux")
+    cfg!(feature = "lite")
         || HARD_SETTINGS
             .read()
             .unwrap()
             .get("conn-type")
-            .map_or(false, |x| x == ("outgoing"))
+            .map_or(false, |x| x == ("incoming"))
+}
+
+#[inline]
+pub fn is_outgoing_only() -> bool {
+    // The Linux controlled side is the lite build (docs/APPROVAL_SPEC.md); the full Linux build only controls.
+    !cfg!(feature = "lite")
+        && (cfg!(target_os = "linux")
+            || HARD_SETTINGS
+                .read()
+                .unwrap()
+                .get("conn-type")
+                .map_or(false, |x| x == ("outgoing")))
 }
 
 #[inline]

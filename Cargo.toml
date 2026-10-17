@@ -21,6 +21,8 @@ use_samplerate = ["samplerate", "libsamplerate-sys"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
+# Controlled-only ("lite") build: no outgoing peer session, no controller credential (docs/APPROVAL_SPEC.md section 6).
+lite = ["hbb_common/lite"]
 default = ["use_dasp"]
 hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]

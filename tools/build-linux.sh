@@ -48,7 +48,8 @@ if [ ! -f src/bridge_generated.rs ] || [ ! -f flutter/lib/generated_bridge.dart 
 fi
 
 echo "== Rust library (release, --locked)"
-cargo build --locked --release --features flutter,linux-pkg-config --lib
+# HANDOVER_LITE=1: controlled-only build (docs/APPROVAL_SPEC.md section 6)
+cargo build --locked --release --features "flutter,linux-pkg-config${HANDOVER_LITE:+,lite}" --lib
 echo "== Flutter bundle (release, --enforce-lockfile)"
 (cd flutter && flutter pub get --enforce-lockfile)
 # The first build in a fresh tree can compile the plugins before Flutter has generated its headers
