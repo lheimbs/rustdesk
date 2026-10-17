@@ -587,7 +587,7 @@ point to. `diff -rq` against the pub cache: no differences.
 | pattern audit (Dart, C/C++, CMake) for network, process, telemetry, URL use | only comments, example data, and the `launchUrl` link pattern in dash_chat_2, which the app never reaches: `chat_page.dart` renders `Text(message.text)` through its own `messageTextBuilder` |
 | `flutter pub get --offline`, `pubspec.lock` | sources changed to `path`, versions unchanged |
 | Linux build from the vendored copies | ok; no Flutter plugin host found in the build log (two github.com lines are Cargo git dependencies, not plugins) |
-| Windows build from the vendored copies | see the issue comment |
+| Windows build from the vendored copies | ok on the second try; the first failed because `.gitignore` (`*png`) kept the plugins' png assets out of the tracked files, fixed with `!/third_party/**` |
 
 Regression surface: any Flutter desktop build (plugin code paths are byte-identical to the pinned commits). Residual: the Cargo git
 dependencies (`keepawake`, `tray-icon`, others) are still fetched from GitHub; that is a separate item.
