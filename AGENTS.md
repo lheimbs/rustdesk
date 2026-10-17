@@ -127,7 +127,7 @@ Epic: issue #32. "Measured" = observed in an offline network namespace or on the
 | B6 | not enabled | the builds use only `--features flutter`; no hwcodec/vram/mediacodec/drm |
 | C1 | fixed | `bf4b97f5f`, `6b4ee6c86` (cargo-deny source policy); every git dependency vendored in `third_party/` `d8e898b5e` (#20); dependencies made dead removed `e7a08c118`, `74422d24d` (#22) |
 | C2 | fixed | `394d3e631` |
-| C3 | open: #34 | plugins are pinned by commit `aa232a9df` and the lock is regenerated under the pinned SDK `9b0a30e7c`, but their source is unreviewed and still fetched from GitHub |
+| C3 | vendored (#34) | the nine git-sourced plugins are exact exports in `third_party/flutter/` (provenance table in its README); `pub get` fetches no plugin code from GitHub |
 | C4 | avoided, builds reproducible | `build.py` is not used; `tools/build-linux.sh` (`7282214c9`, `5ddc3f69b`) and `tools/build-windows.ps1` (`3ce578eb7`) give bit-identical results across directories (#23, plan sections 2k and 2n) |
 | C5 | pipeline done; certificate is the maintainer's | own signing scripts `e22f98704`, `746ff5083` (tested with a throwaway certificate); the real certificate, and machines with Smart App Control: #18 |
 
