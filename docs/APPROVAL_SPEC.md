@@ -58,7 +58,10 @@ Same shape as E9 `--elevation-proof`, a new mode `--approval-proof <nonce>`:
   open an outgoing peer session. Egress scenario: only hbbs/hbbr.
 * The installer ships the same service; `AGENTS.md` layout lists the `cfg(feature = "lite")` boundaries.
 
-## 7. Stories (proposed)
+On Linux the lite build is the controlled side: the full Linux build is outgoing-only (`is_outgoing_only()` is true on Linux without the feature), so it
+never starts a server. Plan section 2ae.
+
+## 7. Stories  (#56-#61)
 
 | # | Story | Needs laptop |
 |---|---|---|
