@@ -796,7 +796,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Credentials from the controller are not accepted", "Zugangsdaten vom steuernden Gerät werden nicht angenommen"),
         ("Allow", "Zulassen"),
         ("Deny", "Ablehnen"),
-        ("elevation_request_tip", "Das steuernde Gerät bittet um Administratorzugriff für {} Minuten. Damit könnte es Windows-Abfragen und den Sperrbildschirm sehen und bedienen. \"Zulassen\" öffnet die Windows-Abfrage, die Sie bestätigen müssen."),
+        ("elevation_request_tip", "Das steuernde Gerät bittet um Administratorzugriff für {} Minuten (Windows-Abfragen, Sperrbildschirm). „Zulassen“ öffnet die Windows-Abfrage."),
         ("Administrator access needs the keyboard permission", "Administratorzugriff erfordert die Berechtigung für die Tastatur"),
         ("A request for administrator access is already pending", "Eine Anfrage nach Administratorzugriff ist bereits offen"),
         ("Administrator access needs Windows UAC with a prompt on the secure desktop", "Administratorzugriff erfordert die Windows-Benutzerkontensteuerung mit Abfrage auf dem sicheren Desktop"),
@@ -804,6 +804,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The Windows prompt was declined", "Die Windows-Abfrage wurde abgelehnt"),
         ("elevation_active_tip", "Administratorzugriff ist aktiv (noch {} Minuten). Das steuernde Gerät kann Windows-Abfragen und den Sperrbildschirm sehen und bedienen."),
         ("Stop administrator access", "Administratorzugriff beenden"),
-        ("elevation_keep_connected_tip", "Dieses steuernde Gerät auch über eine Abmeldung hinweg verbunden lassen (15 Minuten). Es kann dann den Anmeldebildschirm sehen und dort tippen."),
+        ("elevation_keep_connected_tip", "Über eine Abmeldung hinweg verbunden bleiben (15 Min.); es kann dann am Anmeldebildschirm tippen."),
     ].iter().cloned().collect();
 }
