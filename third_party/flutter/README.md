@@ -20,3 +20,6 @@ edit them by hand: to update one, export the new commit the same way, review the
 Review (2026-10-17, plan section 2ad): source only, no prebuilt binaries; a pattern audit of the Dart and native code
 (Windows, Linux) for network, process, telemetry and URL use found only comments, plus one link pattern in dash_chat_2
 that this app does not use (its own message builder renders plain text).
+
+The repository's `.gitignore` excludes `*png`; `!/third_party/**` re-includes everything here, because the plugins declare png assets
+(`dash_chat_2/assets`, `window_manager/images`) and a build from tracked files must see them.

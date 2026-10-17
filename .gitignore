@@ -61,3 +61,6 @@ flutter/web/
 /server/build/
 /kb/
 /dist/
+
+# vendored packages are exact exports: nothing in them is ignored (their assets are png files)
+!/third_party/**
