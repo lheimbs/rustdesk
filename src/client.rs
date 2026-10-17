@@ -936,6 +936,11 @@ impl Client {
                 my_addr,
                 peer
             );
+            if i > 1 {
+                // Handover admission: hbbs refuses a token it has seen (replay), so a retry carries a fresh one.
+                msg_out.mut_punch_hole_request().licence_key =
+                    crate::admission::controller_token("punch", &peer);
+            }
             socket.send(&msg_out).await?;
             // below timeout should not bigger than hbbs's connection timeout.
             let attempt_deadline = Instant::now() + Duration::from_millis((i * 3000) as u64);
