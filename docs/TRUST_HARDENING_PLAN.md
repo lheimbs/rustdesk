@@ -530,7 +530,7 @@ No code change; verification on the Windows test machine (installed build, gated
 | T-01 which account runs what | `--service`: SYSTEM, session 0, elevated, system integrity; `--server`, `--cm`, `--tray` and the UI: the signed-in user, session 1, **not elevated, medium integrity** (0x2000), although that account is an administrator (filtered token); the helper exists only during a grant (E9) |
 | T-03 file transfer into SYSTEM-only places | listing the service's own data folder and `C:\Windows\System32\config` was refused (the view stayed where it was), while the same way of navigating listed `C:\Program Files\<app>`; the file operations run in the connection manager (`--cm`), i.e. as the user |
 | T-04 file transfer into the user's folder | the uploaded file is **owned by the signed-in user**, content intact |
-| upload into a folder the user may not write (`C:\Program Files\<app>`) | the file was **not written** (correct), but the controller showed "Finished, 1/1 files": bug #53 |
+| upload into a folder the user may not write (`C:\Program Files\<app>`) | the file was **not written** (correct), but the controller showed "Finished, 1/1 files": bug #53, **fixed** (the connection manager ended the job on the failed write; the controller now shows "Error"; a normal upload still finishes; regression test `a_refused_write_is_reported_as_an_error_and_never_as_done`) |
 | tier 1 does not widen file transfer | during a grant (helper running) the service's data folder was still refused: the helper only captures and injects input |
 | audio | the user-level server opened the default output device (server log); not listened to |
 
