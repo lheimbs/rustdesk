@@ -592,6 +592,25 @@ point to. `diff -rq` against the pub cache: no differences.
 Regression surface: any Flutter desktop build (plugin code paths are byte-identical to the pinned commits). Residual: the Cargo git
 dependencies (`keepawake`, `tray-icon`, others) are still fetched from GitHub; that is a separate item.
 
+### 2ae. A5: lite (controlled-only) build (2026-10-17; story A5 of the approval epic, #60)
+
+Cargo feature `lite` (root and `hbb_common`; `HANDOVER_LITE=1` in `tools/build-linux.sh`, `tools/build-windows.ps1`): `is_incoming_only()` is true on
+every platform, `is_outgoing_only()` false (so on Linux the lite build is the **controlled** side; the full Linux build stays controller-only);
+`Client::start` refuses ("This is a controlled-only installation"), including the switch-sides exception; `admission::controller()` returns
+nothing, so no controller credential is read or signed with (`controller_auth::attach` does nothing). The Flutter UI already hides the connection
+pane in incoming-only mode. Not done in this step: the connect code is still compiled in (refused at its single entry); removing `client.rs`
+from the lite binary is a later refinement.
+
+| Check | Result |
+|---|---|
+| unit tests (`cargo test --features flutter,linux-pkg-config,lite --lib lite`) | 2 pass: no controller token, incoming-only on every platform |
+| Linux lite build (`--locked`, vendor-host scan) | ok |
+| egress, lite UI idle 60 s | PASS: only 10.77.0.1:21116 (registration), no packet to the uplink |
+| egress, lite asked to connect out (40 s) | PASS: 0 destinations; the refusal is logged 6 times |
+| Windows lite build | ok (not installed or run yet) |
+
+Regression surface: the full builds (every change is `cfg!(feature = "lite")`, false there); `is_outgoing_only` keeps its value without the feature.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

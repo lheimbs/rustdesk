@@ -10,6 +10,10 @@ if "$HERE/egress-check.sh" selftest 4 >/dev/null 2>&1; then echo "selftest: the 
 for m in server ui down offline wrongkey; do
   if "$HERE/egress-check.sh" $m "$DUR" >/tmp/egress-all.$$.log 2>&1; then echo "$m: PASS"; else echo "$m: FAIL"; tail -15 /tmp/egress-all.$$.log; rc=1; fi
 done
+# A controlled-only (lite) build: its server registers and idles; set LITE_BUNDLE to its bundle executable.
+if [ -n "${LITE_BUNDLE:-}" ]; then
+  if BUNDLE=$LITE_BUNDLE "$HERE/egress-check.sh" ui "$DUR" >/tmp/egress-all.$$.log 2>&1; then echo "lite: PASS"; else echo "lite: FAIL"; tail -15 /tmp/egress-all.$$.log; rc=1; fi
+fi
 rm -f /tmp/egress-all.$$.log
 [ $rc = 0 ] && echo "ALL EGRESS SCENARIOS PASS" || echo "EGRESS CHECK FAILED"
 exit $rc
