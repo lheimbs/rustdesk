@@ -305,11 +305,9 @@ packages:
   dash_chat_2:
     dependency: "direct main"
     description:
-      path: "."
-      ref: bd6b5b41254e57c5bcece202ebfb234de63e6487
-      resolved-ref: bd6b5b41254e57c5bcece202ebfb234de63e6487
-      url: "https://github.com/rustdesk-org/Dash-Chat-2"
-    source: git
+      path: "../third_party/flutter/dash_chat_2"
+      relative: true
+    source: path
     version: "0.0.18"
   dbus:
     dependency: transitive
@@ -338,11 +336,9 @@ packages:
   desktop_multi_window:
     dependency: "direct main"
     description:
-      path: "."
-      ref: cddc2e64f8fefce4f80db87b20bcda2dd019bed6
-      resolved-ref: cddc2e64f8fefce4f80db87b20bcda2dd019bed6
-      url: "https://github.com/rustdesk-org/rustdesk_desktop_multi_window"
-    source: git
+      path: "../third_party/flutter/desktop_multi_window"
+      relative: true
+    source: path
     version: "0.1.0"
   device_info_plus:
     dependency: "direct main"
@@ -379,11 +375,9 @@ packages:
   dynamic_layouts:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "24cb88413fa5181d949ddacbb30a65d5c459e7d9"
-      resolved-ref: "24cb88413fa5181d949ddacbb30a65d5c459e7d9"
-      url: "https://github.com/rustdesk-org/dynamic_layouts.git"
-    source: git
+      path: "../third_party/flutter/dynamic_layouts"
+      relative: true
+    source: path
     version: "0.0.1+1"
   equatable:
     dependency: transitive
@@ -529,20 +523,16 @@ packages:
   flutter_custom_cursor:
     dependency: "direct main"
     description:
-      path: "."
-      ref: db63b785c38153603e9fb84b50d3ec46f0d7e05e
-      resolved-ref: db63b785c38153603e9fb84b50d3ec46f0d7e05e
-      url: "https://github.com/rustdesk-org/flutter_custom_cursor"
-    source: git
+      path: "../third_party/flutter/flutter_custom_cursor"
+      relative: true
+    source: path
     version: "0.0.3"
   flutter_gpu_texture_renderer:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "08a471bb8ceccdd50483c81cdfa8b81b07b14b87"
-      resolved-ref: "08a471bb8ceccdd50483c81cdfa8b81b07b14b87"
-      url: "https://github.com/rustdesk-org/flutter_gpu_texture_renderer"
-    source: git
+      path: "../third_party/flutter/flutter_gpu_texture_renderer"
+      relative: true
+    source: path
     version: "0.0.1"
   flutter_keyboard_visibility:
     dependency: "direct main"
@@ -1327,11 +1317,9 @@ packages:
   texture_rgba_renderer:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "42797e0f03141dc2b585f76c64a13974508058b4"
-      resolved-ref: "42797e0f03141dc2b585f76c64a13974508058b4"
-      url: "https://github.com/rustdesk-org/flutter_texture_rgba_renderer"
-    source: git
+      path: "../third_party/flutter/texture_rgba_renderer"
+      relative: true
+    source: path
     version: "0.0.16"
   timing:
     dependency: transitive
@@ -1368,11 +1356,9 @@ packages:
   uni_links:
     dependency: "direct main"
     description:
-      path: uni_links
-      ref: f416118d843a7e9ed117c7bb7bdc2deda5a9e86f
-      resolved-ref: f416118d843a7e9ed117c7bb7bdc2deda5a9e86f
-      url: "https://github.com/rustdesk-org/uni_links"
-    source: git
+      path: "../third_party/flutter/uni_links"
+      relative: true
+    source: path
     version: "0.5.1"
   uni_links_desktop:
     dependency: "direct main"
@@ -1625,20 +1611,16 @@ packages:
   window_manager:
     dependency: "direct main"
     description:
-      path: "."
-      ref: cf4aef0512092fad9344a27ffe1c47ad83269dfc
-      resolved-ref: cf4aef0512092fad9344a27ffe1c47ad83269dfc
-      url: "https://github.com/rustdesk-org/window_manager"
-    source: git
+      path: "../third_party/flutter/window_manager"
+      relative: true
+    source: path
     version: "0.3.6"
   window_size:
     dependency: "direct main"
     description:
-      path: "plugins/window_size"
-      ref: "51e67ce047c72b26810b99e8473ddb44612fe356"
-      resolved-ref: "51e67ce047c72b26810b99e8473ddb44612fe356"
-      url: "https://github.com/21pages/flutter-desktop-embedding.git"
-    source: git
+      path: "../third_party/flutter/window_size"
+      relative: true
+    source: path
     version: "0.1.0"
   xdg_directories:
     dependency: transitive

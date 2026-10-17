@@ -38,9 +38,8 @@ dependencies:
   url_launcher_ios: ^6.3.2
   toggle_switch: ^2.1.0
   dash_chat_2:
-    git:
-      url: https://github.com/rustdesk-org/Dash-Chat-2
-      ref: bd6b5b41254e57c5bcece202ebfb234de63e6487
+    # vendored from the pinned commit bd6b5b41254e57c5bcece202ebfb234de63e6487 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/dash_chat_2
   draggable_float_widget: ^0.1.0
   settings_ui: ^2.0.2
   flutter_breadcrumb: ^1.0.1
@@ -52,23 +51,18 @@ dependencies:
   back_button_interceptor: ^6.0.1
   flutter_rust_bridge: "1.80.1"
   window_manager:
-    git:
-      url: https://github.com/rustdesk-org/window_manager
-      ref: cf4aef0512092fad9344a27ffe1c47ad83269dfc
+    # vendored from the pinned commit cf4aef0512092fad9344a27ffe1c47ad83269dfc (see third_party/flutter/README.md)
+    path: ../third_party/flutter/window_manager
   desktop_multi_window:
-    git:
-      url: https://github.com/rustdesk-org/rustdesk_desktop_multi_window
-      ref: cddc2e64f8fefce4f80db87b20bcda2dd019bed6
+    # vendored from the pinned commit cddc2e64f8fefce4f80db87b20bcda2dd019bed6 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/desktop_multi_window
   freezed_annotation: ^2.0.3
   flutter_custom_cursor:
-    git:
-      url: https://github.com/rustdesk-org/flutter_custom_cursor
-      ref: db63b785c38153603e9fb84b50d3ec46f0d7e05e
+    # vendored from the pinned commit db63b785c38153603e9fb84b50d3ec46f0d7e05e (see third_party/flutter/README.md)
+    path: ../third_party/flutter/flutter_custom_cursor
   window_size:
-    git:
-      url: https://github.com/21pages/flutter-desktop-embedding.git
-      path: plugins/window_size
-      ref: 51e67ce047c72b26810b99e8473ddb44612fe356
+    # vendored from the pinned commit 51e67ce047c72b26810b99e8473ddb44612fe356 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/window_size
   get: ^4.6.5
   visibility_detector: ^0.4.0+2
   contextmenu: ^3.0.0
@@ -78,10 +72,8 @@ dependencies:
   file_picker: ^5.1.0
   flutter_svg: ^2.0.5
   uni_links:
-    git:
-      url: https://github.com/rustdesk-org/uni_links
-      path: uni_links
-      ref: f416118d843a7e9ed117c7bb7bdc2deda5a9e86f
+    # vendored from the pinned commit f416118d843a7e9ed117c7bb7bdc2deda5a9e86f (see third_party/flutter/README.md)
+    path: ../third_party/flutter/uni_links
   uni_links_desktop: ^0.1.6 # use 0.1.6 to make flutter 3.13 works
   path: ^1.8.1
   auto_size_text: ^3.0.0
@@ -91,22 +83,19 @@ dependencies:
   flutter_launcher_icons: ^0.13.1
   flutter_keyboard_visibility: ^5.4.0
   texture_rgba_renderer:
-    git:
-      url: https://github.com/rustdesk-org/flutter_texture_rgba_renderer
-      ref: 42797e0f03141dc2b585f76c64a13974508058b4
+    # vendored from the pinned commit 42797e0f03141dc2b585f76c64a13974508058b4 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/texture_rgba_renderer
   percent_indicator: ^4.2.2
   dropdown_button2: ^2.0.0
   flutter_gpu_texture_renderer:
-    git:
-      url: https://github.com/rustdesk-org/flutter_gpu_texture_renderer
-      ref: 08a471bb8ceccdd50483c81cdfa8b81b07b14b87
+    # vendored from the pinned commit 08a471bb8ceccdd50483c81cdfa8b81b07b14b87 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/flutter_gpu_texture_renderer
   uuid: ^3.0.7
   auto_size_text_field: ^2.2.1
   flex_color_picker: ^3.3.0
   dynamic_layouts:
-    git:
-      url: https://github.com/rustdesk-org/dynamic_layouts.git
-      ref: 24cb88413fa5181d949ddacbb30a65d5c459e7d9
+    # vendored from the pinned commit 24cb88413fa5181d949ddacbb30a65d5c459e7d9 (see third_party/flutter/README.md)
+    path: ../third_party/flutter/dynamic_layouts
   pull_down_button: ^0.9.3
   device_info_plus: ^9.1.0
   qr_flutter: ^4.1.0
