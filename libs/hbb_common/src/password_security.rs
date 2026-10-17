@@ -61,8 +61,10 @@ pub fn temporary_password_length() -> usize {
     }
 }
 
+// Handover (#36): the one-time password is the only password a login is checked against, so it is always on; a stored
+// "use-permanent-password" must not switch off its failure counter.
 pub fn temporary_enabled() -> bool {
-    verification_method() != VerificationMethod::OnlyUsePermanentPassword
+    true
 }
 
 pub fn permanent_enabled() -> bool {
