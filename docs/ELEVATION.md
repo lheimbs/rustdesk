@@ -45,6 +45,14 @@ connection manager; the controller disconnecting; the user signing out or switch
 restarting. The session continues at tier 0 where the connection survives. The controller is told why ("expired",
 "ended on the remote machine").
 
+## Keep connected through sign-out
+
+When the person ticks **Stay connected through sign-out** on the request card (and then allows the request), the controller
+may come back for 15 minutes after a sign-out without a password or a click: it sees the sign-in screen and can type
+there. Say this plainly to the person before they tick it. It ends after 15 minutes, when a different user signs in, with
+*Stop administrator access* or *Drop administrator access*, and when the machine restarts. Without the box a sign-out ends
+the session as before. Connection-log lines: `resume-accepted`, `resume-refused`.
+
 ## What to tell the person at the machine
 
 - "You will see a request for administrator access with Allow and Deny. If you allow it, Windows asks you to confirm.
@@ -84,6 +92,5 @@ access. It is not read from `.env`.
 - A program of the signed-in user can block administrator access (not gain it) by occupying a pipe name; the request
   then ends with "ended on the remote machine".
 - The "protected screen" notice can be closed by the controller; it comes back with the next protected period.
-- Not available yet: **keep connected through sign-out** (story E10). A sign-out ends the session as before.
 - Not yet tested on a real machine: a standard user answering the prompt with an administrator's password, a machine with
   a changed UAC policy, sleep and wake during administrator access.

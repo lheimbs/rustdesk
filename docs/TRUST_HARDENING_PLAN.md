@@ -555,6 +555,25 @@ Removed: the proxy helper started by the user-level server itself (upstream `Sta
 
 Checks: Linux unit tests (`cargo test --lib elevation`, 15 pass); Linux release build with its vendor-host `strings` scan (none found); Windows build (no new warnings from the change); egress checker self-test (detects its leak); on the test machine a grant still starts the SYSTEM helper and the connection manager shows only the new controls.
 
+### 2ac. E10: keep connected through sign-out (2026-10-17; story E10 of the two-tier epic)
+
+What changed. The request card in the connection manager has an unticked box "Stay connected through sign-out (15 min); it can then type at the sign-in screen" (clicks from the controller's own input are dropped, like the buttons). If it is ticked and the UAC proof succeeds, the service also records a **resume grant** (`src/server/elevation_grant.rs`): in service memory only, 15 minutes, bound to the controller credential serial and the SID of the user signed in to the session, with a 16-byte id and a 256-bit secret handed to the controller once (`ElevationStatus.resume_secret`, inside the encrypted session). The controller keeps it in memory only. On its automatic reconnect it sends `LoginRequest.resume_token` = id + HMAC-SHA256(secret, "handover-resume", the new connection's challenge, its own ID), so a captured token is useless for any other connection. The controlled side checks the controller credential first, then asks the service (`ResumeCheck`, only from the server it launched): unexpired, same serial, correct MAC, and nobody signed in or the granting user signed in again. Then the session is authorised without password and click, and the connection log records `resume-accepted` / `resume-refused`. A resume grant ends at its time limit, when another user signs in (checked every service-loop turn), by Drop or local Stop, and with the service process (reboot, service restart). The connection merely closing keeps it (that is the point). Without the box nothing changes.
+
+Also fixed on the way: a punch-hole retry re-sent the same admission token, which the gated `hbbs` refuses as a replay ("Key mismatch" on a reconnect to a peer that was briefly away); every attempt now carries a fresh token.
+
+Measured on the Windows test machine remotely (no one at the machine; forced sign-out `shutdown /l /f`, session restored by a restart with auto sign-in):
+
+| Test | Result |
+|---|---|
+| T-20 first half: grant with the box ticked, sign out | the console moved to a new session at the sign-in screen, the service started the SYSTEM sign-in server there, the controller reconnected **by itself** and showed the sign-in screen; service log `resume accepted`; the controller's typing reached the password field (control by the machine's own screen: dots appeared; cleared afterwards) |
+| resume more than once | the sign-in server was ended by hand: the controller reconnected again, `resume accepted` again |
+| T-22 time limit | after 15 minutes: `keep-connected grant ended`, the next reconnect `resume refused ... no such resume grant`; the controller fell back to asking for a password |
+| T-19: grant **without** the box, sign out | the sign-in server came up; the controller's reconnect carried no resume token and was refused ("Wrong password", no prompt possible) |
+| T-22 reboot | the controller had already given up during the restart ("offline"); a resume after a reboot is covered by the grant living in service memory only (and T-25: a service restart drops every grant), not measured |
+| unit tests (`cargo test --lib elevation`, 18 pass) | resume through sign-out, again by the same user; other controller credential, wrong secret, replayed proof (other challenge), other peer ID refused; expiry; another user voids it for good; connection close keeps it, Drop/Stop end it; no box, no resume grant |
+
+Open (needs the owner): T-20 second half (the same user signs in again: the session continues at tier 0 without a click) and T-21 (another user signs in: the resume grant is void). Note for those tests: a normal sign-out on the test machine hangs on its touchpad driver crashing (kb); the program is not involved (#54 closed).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
