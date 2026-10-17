@@ -188,13 +188,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
-    case WM_ENDSESSION:
-      // Handover (#54): the session is ending (sign-out, restart). Windows that only hide on close (the main
-      // window) would otherwise keep the sign-out waiting for a click nobody gives; end the process now.
-      if (wparam == TRUE) {
-        ExitProcess(0);
-      }
-      break;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
