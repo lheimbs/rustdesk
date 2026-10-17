@@ -283,7 +283,7 @@ Two fresh copies of the checkout in different directories (no `target/`, no `.en
 | Egress green for every process mode and scenario | `tools/egress-all.sh 60` on the final bundle: idle UI, servers alone, server down (retry loops), peer offline, wrong server key all PASS on the syscall trace and on the packet capture; the self-test (a deliberate leaker) FAILs as required. Windows: per-process Filtering Platform audit PASS for an attended session with file transfer, clipboard and refusals (sections 2d-2g, 2i). The Linux controller's own trace during a real session through the relay: only the server's rendezvous and relay ports. 24 h soaks (2j): PASS. Not exercised: a direct (hole-punched) peer connection |
 | `strings` scan of release binaries | 0 vendor hosts in all 89 files of the final Linux bundle and in the Windows `librustdesk.dll` (patterns: `rustdesk.com/cn`, the vendor servers, STUN hosts, `nip.io`, `telegram`, `rustdesk-org`); the only URLs left are documentation, licence and font links (docs.rs, flutter.dev, w3.org, ...). `tools/build-linux.sh` fails the build on a hit |
 | UI crawl | Final bundle, 15 min in the offline namespace with the packet capture (PASS: 0 destinations, 0 packets), driven by hand: Home (ID field help, connect menu, search, change-view menu, favourites, recent, settings gear), Settings General (all sections), Network (ID/Relay server dialog, proxy), Display, About; no vendor link or page found. The WebSocket and insecure-TLS toggles are gone. Leftovers (none contacts anything; all cosmetic, tracked in #35): the API-server field in the ID/Relay dialog, the recording checkbox, camera/terminal/tunnel entries in the connect menu, the ID help text mentioning `id@server`/`@public`, `RustDesk` in many translations, mobile-only pages |
-| AGENTS.md audit table with hashes | updated: every row is fixed with a hash or open with an issue link (C3: #34, residual cosmetics: #35) |
+| AGENTS.md audit table with hashes | updated: every row is fixed with a hash or open with an issue link (C3 vendored in #34, residual cosmetics: #35) |
 
 **Findings of this pass.**
 * (Superseded by section 2p, which closes the gap described here.) `password_security::approve_mode()` was a constant `Click`: the controlled side never checks a password, only a human click (the code path with the password and its failure counters is unreachable). The brute-force criterion of #13 is therefore moot; measured instead: eight consecutive connection attempts with wrong passwords through the relay each produced a prompt that stayed unauthorised, the displayed one-time password did not change, nothing was logged except connection/refusal/close. A peer that holds the server key can still raise prompts repeatedly (no rate limit on prompts): known limit.
@@ -573,6 +573,24 @@ Measured on the Windows test machine remotely (no one at the machine; forced sig
 | unit tests (`cargo test --lib elevation`, 18 pass) | resume through sign-out, again by the same user; other controller credential, wrong secret, replayed proof (other challenge), other peer ID refused; expiry; another user voids it for good; connection close keeps it, Drop/Stop end it; no box, no resume grant |
 
 Open (needs the owner): T-20 second half (the same user signs in again: the session continues at tier 0 without a click) and T-21 (another user signs in: the resume grant is void). Note for those tests: a normal sign-out on the test machine hangs on its touchpad driver crashing (kb); the program is not involved (#54 closed).
+
+### 2ad. C3: git-sourced Flutter plugins vendored (2026-10-17; issue #34)
+
+The nine plugins that `flutter/pubspec.yaml` took from `rustdesk-org` repositories and one individual's fork are now exact
+`git archive` exports in `third_party/flutter/` (commits and upstream repositories in its README), referenced by `path:`. `flutter pub get`
+fetches no plugin code from GitHub any more. For `uni_links` the two symlinks to the repository root were replaced by the files they
+point to. `diff -rq` against the pub cache: no differences.
+
+| Check | Result |
+|---|---|
+| prebuilt binaries in the copies | none (one raw cursor data file in an example directory) |
+| pattern audit (Dart, C/C++, CMake) for network, process, telemetry, URL use | only comments, example data, and the `launchUrl` link pattern in dash_chat_2, which the app never reaches: `chat_page.dart` renders `Text(message.text)` through its own `messageTextBuilder` |
+| `flutter pub get --offline`, `pubspec.lock` | sources changed to `path`, versions unchanged |
+| Linux build from the vendored copies | ok; no Flutter plugin host found in the build log (two github.com lines are Cargo git dependencies, not plugins) |
+| Windows build from the vendored copies | see the issue comment |
+
+Regression surface: any Flutter desktop build (plugin code paths are byte-identical to the pinned commits). Residual: the Cargo git
+dependencies (`keepawake`, `tray-icon`, others) are still fetched from GitHub; that is a separate item.
 
 ## 3. Design decisions
 
