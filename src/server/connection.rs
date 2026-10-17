@@ -2557,7 +2557,9 @@ impl Connection {
         let controller = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash);
         #[cfg(windows)]
         if let Ok(c) = &controller {
-            if !self.lr.resume_token.is_empty() && self.resume_login(c.serial).await {
+            // Only the screen: file transfer, tunnels or a camera through the SYSTEM sign-in server would reach
+            // far more than the person allowed.
+            if !self.lr.resume_token.is_empty() && self.is_remote() && self.resume_login(c.serial).await {
                 return true;
             }
         }
