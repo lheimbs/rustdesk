@@ -549,6 +549,12 @@ No code change. Builds: the Windows installer of `handover/trust-hardening` afte
 
 Not covered: the sign-in server (SYSTEM, no user signed in) against the admission matrix; it needs a sign-out on the test machine (owner).
 
+### 2ab. E12: helper starts the new model makes dead or dangerous, removed (2026-10-17; story E12 of the two-tier epic)
+
+Removed: the proxy helper started by the user-level server itself (upstream `StartPara::Direct`: the connection manager's "elevate" request and the quick-support start in `core_main`) and with credentials from the controller (`StartPara::Logon`, `create_process_with_logon`). The connection manager no longer offers its upstream "Elevate" / "Accept and elevate" buttons (`can_elevate` is false). The only way to the helper is a grant through the service (E7-E9); `--portable-service` started any other way does nothing (E9). `ElevationRequest.logon` stays in the protocol only so it can be recognised and refused (E6). The non-Flutter logon-helper allowance in `ipc/auth.rs` is compiled out of every build this fork makes and was left as is.
+
+Checks: Linux unit tests (`cargo test --lib elevation`, 15 pass); Linux release build with its vendor-host `strings` scan (none found); Windows build (no new warnings from the change); egress checker self-test (detects its leak); on the test machine a grant still starts the SYSTEM helper and the connection manager shows only the new controls.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
