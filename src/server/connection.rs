@@ -2555,6 +2555,12 @@ impl Connection {
     async fn password_then_click(&mut self) -> bool {
         use super::login_gate::{decide, Gate};
         let controller = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash);
+        #[cfg(windows)]
+        if let Ok(c) = &controller {
+            if !self.lr.resume_token.is_empty() && self.resume_login(c.serial).await {
+                return true;
+            }
+        }
         let password_exists = !password::temporary_password().is_empty();
         let supplied_is_empty = self.lr.password.is_empty();
         let mut failure = None;
@@ -2607,6 +2613,36 @@ impl Connection {
             }
         }
         true
+    }
+
+    /// Elevation spec F7 (E10): a signed controller that proves the secret of a "keep connected" grant is let back in
+    /// after sign-out without password or click; the service decides. Anything else takes the normal way.
+    #[cfg(windows)]
+    async fn resume_login(&mut self, serial: u64) -> bool {
+        let token = self.lr.resume_token.to_vec();
+        let challenge = self.hash.challenge.clone();
+        match super::elevation::resume_check_in_service(&token, &challenge, &self.lr.my_id, serial).await {
+            Ok(()) => {
+                super::connection_log::record(
+                    self.inner.id(),
+                    "resume-accepted",
+                    &format!("{} from {} (keep connected), serial {}", self.lr.my_id, self.ip, serial),
+                );
+                if !self.send_logon_response_and_keep_alive().await {
+                    return true;
+                }
+                self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), true);
+                true
+            }
+            Err(why) => {
+                super::connection_log::record(
+                    self.inner.id(),
+                    "resume-refused",
+                    &format!("{} from {}: {}", self.lr.my_id, self.ip, why),
+                );
+                false
+            }
+        }
     }
 
     // Only the current one-time password counts here; it is not remembered as a "recent session",
@@ -4631,7 +4667,7 @@ impl Connection {
             match action {
                 Action::Controller(status) => self.send(message(status)).await,
                 Action::Cm(m) => self.send_to_cm(ipc::Data::ElevationCm(m)),
-                Action::Withdraw(nonce) => withdraw_in_service(nonce),
+                Action::Withdraw(nonce, keep_resume) => withdraw_in_service(nonce, keep_resume),
                 Action::StartHelper(nonce) => {
                     if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Service(nonce)) {
                         log::error!("elevation: the helper could not be prepared: {}", e);

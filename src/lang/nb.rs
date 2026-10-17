@@ -804,5 +804,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The Windows prompt was declined", ""),
         ("elevation_active_tip", ""),
         ("Stop administrator access", ""),
+        ("elevation_keep_connected_tip", ""),
     ].iter().cloned().collect();
 }

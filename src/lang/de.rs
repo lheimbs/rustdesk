@@ -804,5 +804,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The Windows prompt was declined", "Die Windows-Abfrage wurde abgelehnt"),
         ("elevation_active_tip", "Administratorzugriff ist aktiv (noch {} Minuten). Das steuernde Gerät kann Windows-Abfragen und den Sperrbildschirm sehen und bedienen."),
         ("Stop administrator access", "Administratorzugriff beenden"),
+        ("elevation_keep_connected_tip", "Dieses steuernde Gerät auch über eine Abmeldung hinweg verbunden lassen (15 Minuten). Es kann dann den Anmeldebildschirm sehen und dort tippen."),
     ].iter().cloned().collect();
 }

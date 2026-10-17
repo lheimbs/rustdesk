@@ -716,6 +716,11 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
             log::info!("elevation: administrator access of connection {} ended: the session or its server changed", conn_id);
         }
         stop_elevation_helper_without_grant(&mut elevation_helper, &mut elevation_requests);
+        if elevation_requests.has_resume()
+            && elevation_requests.void_resume_if_other_user(session_user_sid(session_id).as_deref(), Instant::now())
+        {
+            log::info!("elevation: keep-connected grant ended (expired, or another user signed in)");
+        }
         let sids: Vec<_> = get_available_sessions(false)
             .iter()
             .map(|e| e.sid)
@@ -774,6 +779,11 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 );
                                 allow_err!(stream.send(&ipc::Data::ElevationReply(reply)).await);
                                 stop_elevation_helper_without_grant(&mut elevation_helper, &mut elevation_requests);
+        if elevation_requests.has_resume()
+            && elevation_requests.void_resume_if_other_user(session_user_sid(session_id).as_deref(), Instant::now())
+        {
+            log::info!("elevation: keep-connected grant ended (expired, or another user signed in)");
+        }
                             }
                             ipc::Data::UserSid(usid) => {
                                 if let Some(usid) = usid {
@@ -942,24 +952,43 @@ fn serve_elevation_request(
             }
         }
         ServiceRequest::Poll { nonce } if from_server => requests.poll(&nonce, Instant::now()),
-        ServiceRequest::End { nonce } if from_server => {
+        ServiceRequest::End { nonce, keep_resume } if from_server => {
             let was = requests.describe();
-            let reply = requests.end(&nonce);
+            let reply = requests.end(&nonce, keep_resume);
             if !was.is_empty() && requests.describe().is_empty() {
                 log::info!("elevation: ended ({})", was);
             }
             reply
         }
-        ServiceRequest::Proof { nonce } => {
+        ServiceRequest::ResumeCheck { id, mac, challenge, peer_id, serial } if from_server => {
+            let signed_in = session_user_sid(session_id);
+            let reply = requests.resume_check(&id, &mac, &challenge, &peer_id, serial, signed_in.as_deref(), Instant::now());
+            match &reply {
+                ServiceReply::Done => log::info!("elevation: resume accepted for controller serial {} (session {})", serial, session_id),
+                ServiceReply::Denied(why) => hbb_common::throttled_log!(
+                    Duration::from_secs(5),
+                    warn,
+                    "elevation: resume refused for controller serial {}: {}",
+                    serial,
+                    why
+                ),
+                _ => {}
+            }
+            reply
+        }
+        ServiceRequest::Proof { nonce, keep } => {
             // Any authorised peer of the service pipe (same session or SYSTEM, same program file) may send a
             // proof; what makes it one is checked here (spec 4.4 step 6).
             let Some(pid) = peer_pid else {
                 return ServiceReply::Denied("unknown caller".to_owned());
             };
+            let proof_session = get_session_id_of_process(pid).unwrap_or(u32::MAX);
             let facts = crate::server::elevation_grant::ProofFacts {
-                session_id: get_session_id_of_process(pid).unwrap_or(u32::MAX),
+                session_id: proof_session,
                 elevated: is_elevated(Some(pid)).unwrap_or(false),
                 account: process_account(pid).unwrap_or_else(|e| format!("unknown ({})", e)),
+                keep,
+                session_user_sid: if keep { session_user_sid(proof_session) } else { None },
             };
             let reply = requests.prove(&nonce, &facts, Instant::now());
             match &reply {
@@ -987,6 +1016,20 @@ fn serve_elevation_request(
             ServiceReply::Denied("the caller is not the server of this session".to_owned())
         }
     }
+}
+
+/// SID of the user signed in to `session_id`, `None` when nobody is (sign-in screen) (elevation E10).
+fn session_user_sid(session_id: u32) -> Option<String> {
+    if get_session_username(session_id).is_empty() {
+        return None;
+    }
+    let token = get_user_token(session_id, true);
+    if token.is_null() {
+        return None;
+    }
+    let sid = acl::token_user_sid_string(windows::Win32::Foundation::HANDLE(token as _)).ok();
+    unsafe { CloseHandle(token) };
+    sid
 }
 
 /// No helper without a grant (E9): when the grant is gone or the helper exited, end and forget it.

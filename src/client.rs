@@ -2798,6 +2798,8 @@ pub struct LoginConfigHandler {
     pub is_terminal_admin: bool,
     hash: Hash,
     password: Vec<u8>, // remember password for reconnect
+    /// Handover (elevation E10): id and secret of a "keep connected" grant, in memory only.
+    pub(crate) resume_blob: Vec<u8>,
     pub remember: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
@@ -3819,6 +3821,11 @@ impl LoginConfigHandler {
             ..Default::default()
         };
         crate::controller_auth::attach(&mut lr, &self.hash);
+        if let Some(token) =
+            crate::server::elevation_grant::resume_token(&self.resume_blob, &self.hash.challenge, &lr.my_id)
+        {
+            lr.resume_token = token.into();
+        }
         match self.conn_type {
             ConnType::FILE_TRANSFER => lr.set_file_transfer(FileTransfer {
                 dir: self.get_remote_dir(),

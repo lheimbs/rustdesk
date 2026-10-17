@@ -1755,8 +1755,9 @@ fn elevation_from_server<T: InvokeUiCM>(
 }
 
 /// The person's answer to a request for administrator access. Allow starts `--elevation-proof` through the
-/// Windows UAC prompt (elevation spec 4.4 step 5); the connection learns the outcome.
-pub fn elevation_decision(_id: i32, _allow: bool) {
+/// Windows UAC prompt (elevation spec 4.4 step 5); the connection learns the outcome. `_keep`: "keep this
+/// controller connected through sign-out" was ticked (E10).
+pub fn elevation_decision(_id: i32, _allow: bool, _keep: bool) {
     #[cfg(windows)]
     {
         let Some(nonce) = ELEVATION_NONCES.lock().unwrap().remove(&_id) else {
@@ -1766,7 +1767,11 @@ pub fn elevation_decision(_id: i32, _allow: bool) {
         std::thread::spawn(move || {
             let uac_declined = allow
                 && !matches!(
-                    crate::platform::windows::elevate(&format!("--elevation-proof {}", nonce)),
+                    crate::platform::windows::elevate(&format!(
+                        "--elevation-proof {}{}",
+                        nonce,
+                        if _keep { " keep" } else { "" }
+                    )),
                     Ok(true)
                 );
             cm_inner_send(

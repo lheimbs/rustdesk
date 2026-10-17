@@ -236,6 +236,29 @@ pub(crate) fn current_process_user_sid_string() -> ResultType<String> {
     result
 }
 
+/// The user SID of a token as a SID string; the caller keeps ownership of `token` (elevation E10: who is signed in).
+pub(crate) fn token_user_sid_string(token: HANDLE) -> ResultType<String> {
+    let buffer = unsafe { read_token_user_buffer(token, "session user")? };
+    let token_user: TOKEN_USER = unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const TOKEN_USER) };
+    if token_user.User.Sid.0.is_null() {
+        bail!("Token SID is null");
+    }
+    let mut sid_string_ptr = PWSTR::null();
+    unsafe {
+        ConvertSidToStringSidW(token_user.User.Sid, &mut sid_string_ptr)
+            .map_err(|e| anyhow!("ConvertSidToStringSidW failed for the session user: {}", e))?;
+    }
+    if sid_string_ptr.is_null() {
+        bail!("ConvertSidToStringSidW returned null SID string pointer");
+    }
+    let _sid_string_guard = LocalAllocGuard(sid_string_ptr.0 as *mut std::ffi::c_void);
+    unsafe {
+        sid_string_ptr
+            .to_string()
+            .map_err(|e| anyhow!("Failed to decode SID string as UTF-16: {}", e))
+    }
+}
+
 /// Hardens ACLs for portable-service shared-memory path (directory or file).
 ///
 /// Why:

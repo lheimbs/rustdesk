@@ -1039,6 +1039,23 @@ class _CmControlPanel extends StatelessWidget {
                 style: const TextStyle(fontSize: 12),
               ).marginOnly(bottom: buttonBottomMargin),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    visualDensity:
+                        const VisualDensity(horizontal: -4, vertical: -4),
+                    value: model.elevationKeep[client.id] ?? false,
+                    // Like every control here: a click made by the controller's own input is dropped.
+                    onChanged: (v) => checkClickTime(client.id,
+                        () => model.elevationKeep[client.id] = v == true),
+                  ),
+                  Expanded(
+                    child: Text(translate('elevation_keep_connected_tip'),
+                        style: const TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ).marginOnly(bottom: buttonBottomMargin),
+              Row(
                 children: [
                   Expanded(
                     child: buildButton(context,

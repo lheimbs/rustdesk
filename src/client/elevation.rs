@@ -11,6 +11,12 @@ pub const TITLE: &str = "Administrator access";
 
 pub fn on_status<T: InvokeUiSession>(handler: &Session<T>, status: &ElevationStatus) {
     let state = status.state.enum_value().unwrap_or(State::None);
+    // "Keep connected" (E10): presented on the automatic reconnect after a sign-out; dropped with the grant.
+    if !status.resume_secret.is_empty() {
+        handler.lc.write().unwrap().resume_blob = status.resume_secret.to_vec();
+    } else if state == State::None {
+        handler.lc.write().unwrap().resume_blob.clear();
+    }
     handler.elevation_status(state as i32, status.expires_in_secs, &status.reason);
     if let Some(text) = notice(state, &status.reason) {
         handler.msgbox("custom-nocancel-nook-hasclose", TITLE, text, "");

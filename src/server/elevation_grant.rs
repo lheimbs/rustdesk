@@ -23,12 +23,16 @@ pub enum ServiceRequest {
     Create { conn_id: i32, serial: u64 },
     /// From the user-level server: the request ended (denied, expired, connection closed).
     Cancel { nonce: String },
-    /// From `--elevation-proof`, started through the UAC prompt.
-    Proof { nonce: String },
+    /// From `--elevation-proof`, started through the UAC prompt; `keep`: the person ticked "keep connected" (E10).
+    Proof { nonce: String, keep: bool },
     /// From the user-level server: is the request still waiting, granted, or gone?
     Poll { nonce: String },
-    /// From the user-level server: the grant ends (drop, local stop, time limit, connection closed).
-    End { nonce: String },
+    /// From the user-level server: the grant ends (drop, local stop, time limit, connection closed). `keep_resume`:
+    /// a resume grant of it survives (the connection closed; it did not end by a decision).
+    End { nonce: String, keep_resume: bool },
+    /// From a server of this machine: a controller reconnects with a resume token (E10); `challenge` is the one this
+    /// connection's login was made over, `peer_id` the controller's ID.
+    ResumeCheck { id: Vec<u8>, mac: Vec<u8>, challenge: String, peer_id: String, serial: u64 },
     /// From the user-level server: start the privileged helper (E9) for this grant on its shared memory.
     StartHelper { nonce: String, shmem_name: String },
 }
@@ -39,8 +43,37 @@ pub enum ServiceReply {
     Done,
     Denied(String),
     Waiting,
-    Granted { secs_left: u64, account: String },
+    /// `resume`: the resume grant's id and secret (16 + 32 bytes), handed over once (E10).
+    Granted { secs_left: u64, account: String, resume: Vec<u8> },
     Gone(String),
+}
+
+/// Time limit of a resume grant (spec S7).
+pub const RESUME_TTL: Duration = Duration::from_secs(15 * 60);
+const RESUME_ID_LEN: usize = 16;
+const RESUME_SECRET_LEN: usize = 32;
+
+/// The controller's proof of a resume secret for one login: an HMAC over the connection's fresh challenge and the
+/// controller's ID, so a captured token is worthless for any other connection.
+pub fn resume_mac(secret: &[u8], challenge: &str, peer_id: &str) -> Option<Vec<u8>> {
+    use hbb_common::sodiumoxide::crypto::auth::hmacsha256;
+    let key = hmacsha256::Key::from_slice(secret)?;
+    let mut message = b"handover-resume\0".to_vec();
+    message.extend_from_slice(challenge.as_bytes());
+    message.push(0);
+    message.extend_from_slice(peer_id.as_bytes());
+    Some(hmacsha256::authenticate(&message, &key).as_ref().to_vec())
+}
+
+/// The token a controller sends: the grant's id and the MAC; `blob` is what `Granted.resume` handed over.
+pub fn resume_token(blob: &[u8], challenge: &str, peer_id: &str) -> Option<Vec<u8>> {
+    if blob.len() != RESUME_ID_LEN + RESUME_SECRET_LEN {
+        return None;
+    }
+    let (id, secret) = blob.split_at(RESUME_ID_LEN);
+    let mut token = id.to_vec();
+    token.extend(resume_mac(secret, challenge, peer_id)?);
+    Some(token)
 }
 
 /// What the service found out about the process that sent a proof.
@@ -51,6 +84,22 @@ pub struct ProofFacts {
     pub elevated: bool,
     /// The account that approved the UAC prompt (the elevated token's user).
     pub account: String,
+    /// "Keep connected" was ticked, and the SID of the user signed in to the request's session (E10).
+    pub keep: bool,
+    pub session_user_sid: Option<String>,
+}
+
+/// "Keep connected" (spec F7, S7): lets the same controller back in without a click after sign-out, for a while,
+/// as long as nobody else signs in.
+#[derive(Debug)]
+struct ResumeGrant {
+    id: Vec<u8>,
+    secret: Vec<u8>,
+    grant_nonce: String,
+    serial: u64,
+    user_sid: String,
+    until: Instant,
+    delivered: bool,
 }
 
 #[derive(Debug)]
@@ -77,6 +126,7 @@ pub struct Requests {
     grant: Option<Grant>,
     /// The server process and session the current request or grant belongs to.
     owner: Option<(u32, u32)>,
+    resume: Option<ResumeGrant>,
 }
 
 impl Requests {
@@ -127,6 +177,18 @@ impl Requests {
         let Some(pending) = self.pending.take() else {
             return ServiceReply::Denied("no such request".to_owned());
         };
+        self.resume = match (facts.keep, facts.session_user_sid.as_ref()) {
+            (true, Some(sid)) => Some(ResumeGrant {
+                id: hbb_common::sodiumoxide::randombytes::randombytes(RESUME_ID_LEN),
+                secret: hbb_common::sodiumoxide::randombytes::randombytes(RESUME_SECRET_LEN),
+                grant_nonce: pending.nonce.clone(),
+                serial: pending.serial,
+                user_sid: sid.clone(),
+                until: now + RESUME_TTL,
+                delivered: false,
+            }),
+            _ => None,
+        };
         self.grant = Some(Grant {
             nonce: pending.nonce,
             conn_id: pending.conn_id,
@@ -140,9 +202,15 @@ impl Requests {
     pub fn poll(&mut self, nonce: &str, now: Instant) -> ServiceReply {
         self.expire(now);
         if let Some(g) = self.grant.as_ref().filter(|g| g.nonce == nonce) {
+            let mut resume = vec![];
+            if let Some(r) = self.resume.as_mut().filter(|r| r.grant_nonce == nonce && !r.delivered) {
+                r.delivered = true;
+                resume = [r.id.as_slice(), r.secret.as_slice()].concat();
+            }
             return ServiceReply::Granted {
                 secs_left: g.until.saturating_duration_since(now).as_secs(),
                 account: g.account.clone(),
+                resume,
             };
         }
         if self.pending.as_ref().map_or(false, |p| p.nonce == nonce) {
@@ -151,14 +219,60 @@ impl Requests {
         ServiceReply::Gone("administrator access ended".to_owned())
     }
 
-    pub fn end(&mut self, nonce: &str) -> ServiceReply {
+    pub fn end(&mut self, nonce: &str, keep_resume: bool) -> ServiceReply {
         if self.grant.as_ref().map_or(false, |g| g.nonce == nonce) {
             self.grant = None;
+        }
+        if !keep_resume && self.resume.as_ref().map_or(false, |r| r.grant_nonce == nonce) {
+            self.resume = None;
         }
         self.cancel(nonce)
     }
 
-    /// Sign-out, user switch, a new server process: nothing granted to the old session survives (F6).
+    /// F7/S7: a reconnecting controller is let in without a click if it proves the secret of an unexpired resume
+    /// grant over this connection's challenge, holds the same controller credential, and either nobody is signed in
+    /// or the user who granted it is. Usable more than once (sign-in screen, then the same user's session).
+    pub fn resume_check(
+        &mut self,
+        id: &[u8],
+        mac: &[u8],
+        challenge: &str,
+        peer_id: &str,
+        serial: u64,
+        signed_in_sid: Option<&str>,
+        now: Instant,
+    ) -> ServiceReply {
+        self.void_resume_if_other_user(signed_in_sid, now);
+        let Some(r) = self.resume.as_ref().filter(|r| r.id == id) else {
+            return ServiceReply::Denied("no such resume grant (unknown, ended or expired)".to_owned());
+        };
+        if r.serial != serial {
+            return ServiceReply::Denied("another controller credential".to_owned());
+        }
+        let expected = resume_mac(&r.secret, challenge, peer_id).unwrap_or_default();
+        if expected.is_empty() || !hbb_common::sodiumoxide::utils::memcmp(&expected, mac) {
+            return ServiceReply::Denied("wrong resume proof".to_owned());
+        }
+        ServiceReply::Done
+    }
+
+    /// Expiry, and "another user signed in" ends a resume grant for good (F7).
+    pub fn void_resume_if_other_user(&mut self, signed_in_sid: Option<&str>, now: Instant) -> bool {
+        let void = self.resume.as_ref().map_or(false, |r| {
+            now >= r.until || signed_in_sid.map_or(false, |sid| sid != r.user_sid)
+        });
+        if void {
+            self.resume = None;
+        }
+        void
+    }
+
+    pub fn has_resume(&self) -> bool {
+        self.resume.is_some()
+    }
+
+    /// Sign-out, user switch, a new server process: nothing granted to the old session survives (F6). A resume grant
+    /// is meant for exactly this and stays (it ends by time, by decision, or when another user signs in).
     pub fn reset(&mut self) -> Option<i32> {
         self.pending = None;
         self.owner = None;
@@ -244,6 +358,8 @@ mod tests {
             session_id,
             elevated,
             account: "PC\\admin".to_owned(),
+            keep: false,
+            session_user_sid: Some("S-1-5-21-1".to_owned()),
         }
     }
 
@@ -258,7 +374,7 @@ mod tests {
         assert!(matches!(r.prove("x", &facts(2, true), t0), ServiceReply::Denied(_)), "wrong nonce");
         assert_eq!(r.prove("n", &facts(2, true), t0), ServiceReply::Done);
         assert!(matches!(r.prove("n", &facts(2, true), t0), ServiceReply::Denied(_)), "replay");
-        assert!(matches!(r.poll("n", t0), ServiceReply::Granted { account, .. } if account == "PC\\admin"));
+        assert!(matches!(r.poll("n", t0), ServiceReply::Granted { account, resume, .. } if account == "PC\\admin" && resume.is_empty()));
         assert!(matches!(r.create(9, 9, 100, 2, "m".into(), t0), ServiceReply::Denied(_)), "one grant per machine");
     }
 
@@ -283,9 +399,9 @@ mod tests {
 
         r.create(1, 7, 100, 2, "a".into(), t0);
         r.prove("a", &facts(2, true), t0);
-        r.end("other");
+        r.end("other", false);
         assert!(r.is_granted(t0), "only the own nonce ends a grant");
-        r.end("a");
+        r.end("a", false);
         assert!(!r.is_granted(t0));
 
         r.create(5, 7, 100, 2, "b".into(), t0);
@@ -307,6 +423,74 @@ mod tests {
         r.create(4, 7, 100, 2, "m".into(), t0);
         r.prove("m", &facts(2, true), t0);
         assert_eq!(r.check_owner(100, 3), Some(4), "session changed");
+    }
+
+    fn granted_with_resume(r: &mut Requests, t0: Instant) -> Vec<u8> {
+        r.create(1, 7, 100, 2, "n".into(), t0);
+        let mut f = facts(2, true);
+        f.keep = true;
+        assert_eq!(r.prove("n", &f, t0), ServiceReply::Done);
+        let ServiceReply::Granted { resume, .. } = r.poll("n", t0) else { panic!("not granted") };
+        assert_eq!(resume.len(), 48, "id and secret handed over once");
+        assert!(matches!(r.poll("n", t0), ServiceReply::Granted { resume, .. } if resume.is_empty()), "only once");
+        resume
+    }
+
+    fn check(r: &mut Requests, blob: &[u8], challenge: &str, serial: u64, sid: Option<&str>, now: Instant) -> bool {
+        let token = resume_token(blob, challenge, "ctl").unwrap();
+        let (id, mac) = token.split_at(16);
+        r.resume_check(id, mac, challenge, "ctl", serial, sid, now) == ServiceReply::Done
+    }
+
+    #[test]
+    fn a_resume_grant_lets_the_same_controller_back_in_through_sign_out() {
+        let t0 = Instant::now();
+        let mut r = Requests::default();
+        let blob = granted_with_resume(&mut r, t0);
+        assert_eq!(r.reset(), Some(1), "sign-out ends the grant ...");
+        assert!(r.has_resume(), "... but not the resume grant");
+        assert!(check(&mut r, &blob, "c1", 7, None, t0), "nobody signed in: the sign-in screen");
+        assert!(check(&mut r, &blob, "c2", 7, Some("S-1-5-21-1"), t0), "the same user signed in again");
+    }
+
+    #[test]
+    fn a_resume_grant_refuses_other_controllers_wrong_proofs_and_replays() {
+        let t0 = Instant::now();
+        let mut r = Requests::default();
+        let blob = granted_with_resume(&mut r, t0);
+        assert!(!check(&mut r, &blob, "c1", 8, None, t0), "another controller credential");
+        let mut forged = blob.clone();
+        forged[20] ^= 1;
+        assert!(!check(&mut r, &forged, "c1", 7, None, t0), "wrong secret");
+        let token = resume_token(&blob, "old challenge", "ctl").unwrap();
+        let (id, mac) = token.split_at(16);
+        assert_ne!(r.resume_check(id, mac, "new challenge", "ctl", 7, None, t0), ServiceReply::Done, "replayed proof");
+        assert_ne!(r.resume_check(id, mac, "old challenge", "other", 7, None, t0), ServiceReply::Done, "other peer id");
+    }
+
+    #[test]
+    fn a_resume_grant_ends_by_time_decision_or_another_user() {
+        let t0 = Instant::now();
+        let mut r = Requests::default();
+        let blob = granted_with_resume(&mut r, t0);
+        assert!(!check(&mut r, &blob, "c", 7, None, t0 + RESUME_TTL), "expired");
+
+        let mut r = Requests::default();
+        let blob = granted_with_resume(&mut r, t0);
+        assert!(!check(&mut r, &blob, "c", 7, Some("S-1-5-21-2"), t0), "another user signed in ...");
+        assert!(!check(&mut r, &blob, "c", 7, None, t0), "... voids it for good");
+
+        let mut r = Requests::default();
+        let blob = granted_with_resume(&mut r, t0);
+        r.end("n", true);
+        assert!(check(&mut r, &blob, "c", 7, None, t0), "the connection closed: kept");
+        r.end("n", false);
+        assert!(!check(&mut r, &blob, "c", 7, None, t0), "drop or stop: gone");
+
+        let mut r = Requests::default();
+        r.create(1, 7, 100, 2, "n".into(), t0);
+        r.prove("n", &facts(2, true), t0);
+        assert!(!r.has_resume(), "no box ticked, no resume grant");
     }
 
     #[test]

@@ -740,6 +740,9 @@ class ServerModel with ChangeNotifier {
   /// Pending requests for administrator access: connection id -> grant time limit in minutes.
   final elevationRequests = <int, int>{}.obs;
 
+  /// "Keep this controller connected through sign-out" per pending request (E10), unticked by default.
+  final elevationKeep = <int, bool>{}.obs;
+
   /// Active administrator access: connection id -> minutes left when granted.
   final elevationActive = <int, int>{}.obs;
 
@@ -771,7 +774,8 @@ class ServerModel with ChangeNotifier {
 
   void answerElevationRequest(int id, bool allow) {
     elevationRequests.remove(id);
-    bind.cmElevationDecision(connId: id, allow: allow);
+    final keep = allow && (elevationKeep.remove(id) ?? false);
+    bind.cmElevationDecision(connId: id, allow: allow, keep: keep);
   }
 
   void setShowElevation(bool show) {

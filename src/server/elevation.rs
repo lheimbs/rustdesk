@@ -91,8 +91,8 @@ pub enum CmMessage {
 pub enum Action {
     Controller(ElevationStatus),
     Cm(CmMessage),
-    /// Withdraw the request or end the grant in the service.
-    Withdraw(String),
+    /// Withdraw the request or end the grant in the service; `true`: keep its resume grant (the connection closed).
+    Withdraw(String, bool),
     /// A line for the local connection log (F9).
     Log(&'static str, String),
     /// Start the privileged helper for this grant (E9).
@@ -173,7 +173,7 @@ impl ConnElevation {
             return vec![];
         };
         match (phase, reply) {
-            (Phase::Allowed | Phase::Granted, Some(ServiceReply::Granted { secs_left, account })) => {
+            (Phase::Allowed | Phase::Granted, Some(ServiceReply::Granted { secs_left, account, resume })) => {
                 let Some(current) = self.current.as_mut() else {
                     return vec![];
                 };
@@ -185,12 +185,17 @@ impl ConnElevation {
                 let nonce = current.nonce.clone();
                 let mut granted = status(State::Granted, "");
                 granted.expires_in_secs = secs_left as u32;
+                let keep = !resume.is_empty();
+                granted.resume_secret = resume.into();
                 vec![
                     Action::Controller(granted),
                     Action::Cm(CmMessage::Active {
                         minutes_left: (secs_left + 59) / 60,
                     }),
-                    Action::Log("elevation-granted", format!("approved by {}", account)),
+                    Action::Log(
+                        "elevation-granted",
+                        format!("approved by {}{}", account, if keep { ", keep connected" } else { "" }),
+                    ),
                     Action::StartHelper(nonce),
                 ]
             }
@@ -229,7 +234,7 @@ impl ConnElevation {
     pub fn closed(&mut self) -> Vec<Action> {
         match self.current.take() {
             Some(c) => vec![
-                Action::Withdraw(c.nonce),
+                Action::Withdraw(c.nonce, true),
                 Action::Cm(CmMessage::Close),
                 Action::Log("elevation-ended", "connection closed".to_owned()),
             ],
@@ -240,7 +245,7 @@ impl ConnElevation {
     fn end(&mut self, state: State, reason: &str, event: &'static str) -> Vec<Action> {
         match self.current.take() {
             Some(c) => vec![
-                Action::Withdraw(c.nonce),
+                Action::Withdraw(c.nonce, false),
                 Action::Cm(CmMessage::Close),
                 Action::Controller(status(state, reason)),
                 Action::Log(event, reason.to_owned()),
@@ -263,10 +268,10 @@ pub async fn create_in_service(conn_id: i32, serial: u64) -> Result<String, Stri
 }
 
 #[cfg(windows)]
-pub fn withdraw_in_service(nonce: String) {
+pub fn withdraw_in_service(nonce: String, keep_resume: bool) {
     use super::elevation_grant::ServiceRequest;
     tokio::spawn(async move {
-        if let Err(err) = call_service(ServiceRequest::End { nonce }).await {
+        if let Err(err) = call_service(ServiceRequest::End { nonce, keep_resume }).await {
             hbb_common::log::warn!("elevation: could not end a request or grant in the service: {}", err);
         }
     });
@@ -280,6 +285,29 @@ pub async fn start_helper_in_service(nonce: String, shmem_name: String) -> hbb_c
     match call_service(ServiceRequest::StartHelper { nonce, shmem_name }).await? {
         ServiceReply::Done => Ok(()),
         other => hbb_common::bail!("{:?}", other),
+    }
+}
+
+/// E10: is this login a valid resume of a "keep connected" grant? `token` is the controller's `resume_token`.
+#[cfg(windows)]
+pub async fn resume_check_in_service(token: &[u8], challenge: &str, peer_id: &str, serial: u64) -> Result<(), String> {
+    use super::elevation_grant::ServiceRequest;
+    if token.len() <= 16 || token.len() > 16 + 64 {
+        return Err("malformed resume token".to_owned());
+    }
+    let (id, mac) = token.split_at(16);
+    let request = ServiceRequest::ResumeCheck {
+        id: id.to_vec(),
+        mac: mac.to_vec(),
+        challenge: challenge.to_owned(),
+        peer_id: peer_id.to_owned(),
+        serial,
+    };
+    match call_service(request).await {
+        Ok(ServiceReply::Done) => Ok(()),
+        Ok(ServiceReply::Denied(why)) => Err(why),
+        Ok(other) => Err(format!("{:?}", other)),
+        Err(err) => Err(err.to_string()),
     }
 }
 
@@ -306,10 +334,11 @@ pub async fn call_service(
 /// checks this process (E8), and exits.
 #[cfg(windows)]
 #[tokio::main(flavor = "current_thread")]
-pub async fn send_proof(nonce: &str) {
+pub async fn send_proof(nonce: &str, keep: bool) {
     use super::elevation_grant::ServiceRequest;
     let request = ServiceRequest::Proof {
         nonce: nonce.to_owned(),
+        keep,
     };
     match call_service(request).await {
         Ok(reply) => hbb_common::log::info!("elevation proof: the service answered {:?}", reply),
@@ -385,7 +414,7 @@ mod tests {
 
         let a = flow.decision(false, false, t0);
         assert_eq!(controller_states(&a), vec![State::Denied]);
-        assert!(a.contains(&Action::Withdraw("n".into())));
+        assert!(a.contains(&Action::Withdraw("n".into(), false)));
         assert!(!flow.busy());
 
         flow.created("n".into(), t0);
@@ -413,7 +442,7 @@ mod tests {
         assert_eq!(flow.decision(true, false, later), vec![], "an answer after the end is ignored");
         flow.created("m".into(), t0);
         let a = flow.closed();
-        assert!(a.contains(&Action::Withdraw("m".into())) && a.contains(&Action::Cm(CmMessage::Close)));
+        assert!(a.contains(&Action::Withdraw("m".into(), true)) && a.contains(&Action::Cm(CmMessage::Close)));
         assert!(!flow.busy());
     }
 
@@ -426,6 +455,7 @@ mod tests {
             Some(ServiceReply::Granted {
                 secs_left,
                 account: "PC\\admin".into(),
+                resume: vec![],
             }),
             t0,
         );
@@ -444,7 +474,7 @@ mod tests {
         assert_eq!(flow.tick(t0 + Duration::from_secs(1799)), vec![]);
         let a = flow.tick(t0 + Duration::from_secs(1800));
         assert_eq!(controller_states(&a), vec![State::Expired]);
-        assert!(a.contains(&Action::Withdraw("n".into())));
+        assert!(a.contains(&Action::Withdraw("n".into(), false)));
 
         granted(&mut flow, t0, 1800);
         assert_eq!(controller_states(&flow.dropped()), vec![State::None]);
@@ -466,13 +496,13 @@ mod tests {
     fn out_of_order_messages_change_nothing() {
         let t0 = Instant::now();
         let mut flow = ConnElevation::default();
-        assert_eq!(flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new() }), t0), vec![]);
+        assert_eq!(flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new(), resume: vec![] }), t0), vec![]);
         assert_eq!(flow.stopped(), vec![]);
         assert_eq!(flow.decision(true, false, t0), vec![]);
         flow.created("n".into(), t0);
         assert_eq!(flow.poll_target(), None, "nothing to poll before Allow");
         assert_eq!(
-            flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new() }), t0),
+            flow.polled(Some(ServiceReply::Granted { secs_left: 60, account: String::new(), resume: vec![] }), t0),
             vec![],
             "a grant before Allow is ignored"
         );

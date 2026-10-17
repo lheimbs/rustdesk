@@ -331,7 +331,7 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--elevation-proof" {
             #[cfg(windows)]
             if let Some(nonce) = args.get(1) {
-                crate::server::elevation::send_proof(nonce);
+                crate::server::elevation::send_proof(nonce, args.get(2).map_or(false, |a| a == "keep"));
             }
             return None;
         } else if args[0] == "--service" {
