@@ -71,6 +71,7 @@ pub mod input_service {
 mod connection;
 mod connection_log;
 mod login_gate;
+pub(crate) mod approval;
 pub(crate) mod elevation;
 pub(crate) mod elevation_grant;
 pub(crate) mod protected_screen;

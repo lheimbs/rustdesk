@@ -261,6 +261,7 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
   (trusted controller, password, prompt); `src/server/connection_log.rs` the local connection log;
   `src/server/sign_broker.rs` the service's sign broker (a user-level Windows server gets its identity, handshake signature and admission tokens from the service, plan 2t);
   `src/server/protected_screen.rs` tier-0 protected screens (plan 2u); `src/server/elevation.rs` (connection side) and
+  `src/server/approval.rs` (pure) who may allow a connection: administrator signed in, proof meaningful (docs/APPROVAL_SPEC.md, epic #55);
   `src/server/elevation_grant.rs` (service side, pure) administrator access: request, consent, UAC proof, grant, helper (plan 2v-2y);
   `src/client/elevation.rs` the controller's view of it.
 * `src/hbbs_http.rs`, `src/updater.rs` same-signature stubs of removed network features.
