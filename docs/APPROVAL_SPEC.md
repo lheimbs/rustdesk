@@ -1,6 +1,6 @@
 # Administrator approval and lite (controlled-only) clients
 
-Status: **draft v0, 2026-10-17** (owner decisions below; not yet an epic). Builds on `docs/ELEVATION_SPEC.md` (D20) and its
+Status: **spec v1, 2026-10-17** (epic in the issue tracker, label `area: approval`). Builds on `docs/ELEVATION_SPEC.md` (D20) and its
 service-verified proof. Windows and Linux controlled sides. Always attended.
 
 ## 1. Decisions (owner, 2026-10-17)
@@ -38,7 +38,7 @@ service-verified proof. Windows and Linux controlled sides. Always attended.
 |---|---|---|
 | Check (service, not UI) | the session user's token is a member of Administrators (has a linked elevated token) | the session user may run anything through sudo: `sudo -l -U <user>` run by the root service reports `(ALL) ALL` |
 | Not an approver | standard user; "Guest"; sign-in screen with nobody signed in | not a sudoer; display manager greeter |
-| Refuse when the proof would be meaningless | UAC off / admins elevate without prompt / prompt not on the secure desktop (reuses E9 `uac_allows_elevation`) | `NOPASSWD` sudo for the user (a process of that user could approve silently); needs an owner decision, see section 8 |
+| Refuse when the proof would be meaningless | UAC off / admins elevate without prompt / prompt not on the secure desktop (reuses E9 `uac_allows_elevation`) | `NOPASSWD` sudo for the user (a process of that user could approve silently); refused (owner decision, section 8) |
 
 ## 5. The proof
 
@@ -69,13 +69,14 @@ Same shape as E9 `--elevation-proof`, a new mode `--approval-proof <nonce>`:
 | A5 | Lite feature gating + Linux build + egress scenario; Windows lite build | build only |
 | A6 | Docs (`docs/ELEVATION.md` operator text), plan section, regression matrix, egress re-run | no |
 
-## 8. Open points
+## 8. Decisions on the open points, and what is still open
 
-1. **Linux `NOPASSWD`:** refuse (like UAC off), or allow because the owner configured it? The dev VM has `NOPASSWD`; testing
-   needs a temporary sudoers change on the throw-away VM.
-2. **Linux controlled side is not covered by ELEVATION_SPEC** (out of scope there): capture/input under Wayland and the
-   service/`--server` split need checking before A3; session = the user whose `--server` serves the display.
+1. **Linux `NOPASSWD` is refused** (owner, 2026-10-17), like UAC off on Windows: `sudo -l -U <user>` shows the user needs no
+   password, so no approver. Tests use throw-away users on the VM: a sudoer whose sudo asks for a password, a standard user, and a
+   `NOPASSWD` sudoer. No change to the VM's own account.
+2. **Linux controlled side is verified first** (owner, 2026-10-17): capture, input and the service/`--server` split under the VM's
+   headless sessions, before A3. Session = the user whose `--server` serves the display.
 3. **Fast user switching:** the approver check follows the active session; a pending request is cancelled, not moved, when the
    active user changes.
-4. **Two sessions, one admin each:** the connection goes to the active console session only.
-5. **Existing "click authorises" connections:** upgrade path is a straight replacement; no setting to keep the old behaviour.
+4. **Two sessions:** the connection goes to the active console session only.
+5. **No setting keeps the old "click authorises" behaviour.**
