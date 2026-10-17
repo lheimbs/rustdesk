@@ -1148,6 +1148,11 @@ async fn handle_fs(
                     })
                     .await
                 {
+                    // The job ends here: a later WriteDone must not report it as done (#53).
+                    if let Some(job) = fs::remove_job(id, write_jobs) {
+                        job.remove_download_file();
+                        tx_log.map(|tx| tx.send(serialize_transfer_job(&job, false, false, &err.to_string())));
+                    }
                     send_raw(fs::new_error(id, err, file_num), &tx);
                 }
             }
@@ -1838,6 +1843,63 @@ mod tests {
     use base::message_proto::{FileDirectory, Message};
     use hbb_common::tokio::{runtime::Runtime, sync::mpsc::unbounded_channel};
     use std::fs;
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn a_refused_write_is_reported_as_an_error_and_never_as_done() {
+        use base::message_proto::FileEntry;
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let (tx, mut rx) = unbounded_channel();
+            // A folder the receiving process may not write into (like `C:\\Program Files\\...` for a normal user).
+            use std::os::unix::fs::PermissionsExt;
+            let blocker = std::env::temp_dir().join("handover_write_refused_test");
+            if blocker.exists() {
+                let _ = fs::set_permissions(&blocker, fs::Permissions::from_mode(0o755));
+                let _ = fs::remove_dir_all(&blocker);
+                let _ = fs::remove_file(&blocker);
+            }
+            fs::create_dir_all(&blocker).unwrap();
+            fs::set_permissions(&blocker, fs::Permissions::from_mode(0o555)).unwrap();
+            let job = base::fs::TransferJob::new_write(
+                7,
+                base::fs::JobType::Generic,
+                String::new(),
+                base::fs::DataSource::FilePath(blocker.clone()),
+                0,
+                false,
+                true,
+                false,
+            )
+            .with_files(vec![FileEntry {
+                name: "a.txt".to_owned(),
+                size: 5,
+                ..Default::default()
+            }])
+            .unwrap();
+            let mut write_jobs = vec![job];
+            let mut read_jobs = vec![];
+            let block = ipc::FS::WriteBlock {
+                id: 7,
+                file_num: 0,
+                data: bytes::Bytes::from_static(b"hello"),
+                compressed: false,
+            };
+            handle_fs(block, &mut write_jobs, &mut read_jobs, &tx, None, 1).await;
+            handle_fs(ipc::FS::WriteDone { id: 7, file_num: 0 }, &mut write_jobs, &mut read_jobs, &tx, None, 1)
+                .await;
+            let mut replies = vec![];
+            while let Ok(Data::RawMessage(bytes)) = rx.try_recv() {
+                let mut msg = Message::new();
+                msg.merge_from_bytes(&bytes).unwrap();
+                replies.push(msg.file_response().clone());
+            }
+            let _ = fs::set_permissions(&blocker, fs::Permissions::from_mode(0o755));
+            let _ = fs::remove_dir_all(&blocker);
+            assert!(replies.iter().any(|r| r.has_error()), "the refusal is reported");
+            assert!(!replies.iter().any(|r| r.has_done()), "and never followed by done: {:?}", replies);
+        });
+    }
 
     #[test]
     #[cfg(not(any(target_os = "ios")))]
