@@ -4,7 +4,9 @@
 > machines you own, against your own open-source `hbbs`/`hbbr` server, with no vendor servers, telemetry, update channel
 > or prebuilt binaries. The goals, audit findings, measurements and work plan are in
 > [`docs/TRUST_HARDENING_PLAN.md`](docs/TRUST_HARDENING_PLAN.md) and the status is tracked in issue #32. Only controllers and machines signed with the owner's own offline key can
-> connect to the machines handed out or use the servers ([`docs/ADMISSION.md`](docs/ADMISSION.md)).
+> connect to the machines handed out or use the servers ([`docs/ADMISSION.md`](docs/ADMISSION.md)). On Windows a session
+> has the signed-in user's rights only; administrator access needs the person at the machine to allow it and answer the
+> Windows prompt, and ends after 30 minutes ([`docs/ELEVATION.md`](docs/ELEVATION.md)).
 >
 > **Licence and source offer:** this software is licensed under the GNU AGPL-3.0 ([`LICENCE`](LICENCE)); the original
 > copyright notices are kept. The complete corresponding source of every build is this repository (third-party forks

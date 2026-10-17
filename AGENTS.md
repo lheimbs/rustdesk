@@ -259,7 +259,10 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
 * `src/controller_auth.rs` controller credential check on the controlled side and attach on the controller;
   `src/admission.rs` tokens for the rendezvous and relay servers; `src/server/login_gate.rs` the pure decision
   (trusted controller, password, prompt); `src/server/connection_log.rs` the local connection log;
-  `src/server/sign_broker.rs` the service's sign broker (a user-level Windows server gets its identity, handshake signature and admission tokens from the service, plan 2t).
+  `src/server/sign_broker.rs` the service's sign broker (a user-level Windows server gets its identity, handshake signature and admission tokens from the service, plan 2t);
+  `src/server/protected_screen.rs` tier-0 protected screens (plan 2u); `src/server/elevation.rs` (connection side) and
+  `src/server/elevation_grant.rs` (service side, pure) administrator access: request, consent, UAC proof, grant, helper (plan 2v-2y);
+  `src/client/elevation.rs` the controller's view of it.
 * `src/hbbs_http.rs`, `src/updater.rs` same-signature stubs of removed network features.
 * `libs/winres/` winres with sorted output (reproducible Windows resources, `HANDOVER_PATCH.md`).
 * `third_party/` every git-sourced dependency, vendored by `tools/vendor-forks.sh`; never edited by hand.
@@ -268,7 +271,7 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
 * `tools/` `build-linux.sh`, `build-windows.ps1`, `sign-windows.ps1`, `trust-windows-cert.ps1`, `egress-check.sh`
   (modes ui, server, down, offline, wrongkey, selftest), `egress-all.sh` (pre-release), `egress-analyze.py`,
   `egress-windows.ps1`, `vendor-forks.sh`, `gen-bridge.sh`.
-* `docs/TRUST_HARDENING_PLAN.md` analysis, decisions D1-D20, measured evidence (2a-2ab); `docs/ELEVATION_SPEC.md` the two-tier access spec (epic: area elevation); `docs/ADMISSION.md` operator's guide for the issuer, credentials, revocation and the error messages; `kb/` (git-ignored, local):
+* `docs/TRUST_HARDENING_PLAN.md` analysis, decisions D1-D20, measured evidence (2a-2ab); `docs/ELEVATION_SPEC.md` the two-tier access spec (epic: area elevation); `docs/ADMISSION.md` operator's guide for the issuer, credentials, revocation and the error messages; `docs/ELEVATION.md` operator's guide for user rights and administrator access on Windows; `kb/` (git-ignored, local):
   the maintainer's environment and scripts.
 
 ### UI Architecture
