@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Tümünü çıkar"),
         ("True color (4:4:4)", "Gerçek renk (4:4:4)"),
         ("Enable blocking user input", "Kullanıcı girişini engellemeyi etkinleştir"),
-        ("id_input_tip", "Bir ID, doğrudan IP veya portlu bir etki alanı (<domain>:<port>) girebilirsiniz.\nBaşka bir sunucudaki bir cihaza erişmek istiyorsanız lütfen sunucu adresini (<id>@<server_address>?key=<key_value>) ekleyin, örneğin,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nGenel bir sunucudaki bir cihaza erişmek istiyorsanız lütfen \"<id>@public\" girin, genel sunucu için anahtara gerek yoktur.\n\nİlk bağlantıda bir aktarma bağlantısının kullanılmasını zorlamak istiyorsanız ID'nin sonuna \"/r\" ekleyin, örneğin, \"9123456234/r\"."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Mod 1"),
         ("privacy_mode_impl_virtual_display_tip", "Mod 2"),
         ("Enter privacy mode", "Gizlilik moduna gir"),

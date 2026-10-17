@@ -542,7 +542,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "تمام پلگ آؤٹ کریں"),
         ("True color (4:4:4)", "اصل رنگ (4:4:4)"),
         ("Enable blocking user input", "صارف ان پٹ کو روکنے کی اجازت دیں"),
-        ("id_input_tip", "آپ ایک ID، براہِ راست IP، یا پورٹ کے ساتھ ڈومین (<domain>:<port>) درج کر سکتے ہیں۔\nاگر آپ کسی دوسرے سرور پر موجود آلے تک رسائی چاہتے ہیں تو سرور کا پتہ ساتھ لگائیں (<id>@<server_address>?key=<key_value>)، مثلاً،\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=۔\nاگر آپ کسی عوامی سرور پر موجود آلے تک رسائی چاہتے ہیں تو \"<id>@public\" درج کریں، عوامی سرور کے لیے کلید درکار نہیں۔\n\nاگر آپ پہلے کنکشن پر ریلے کنکشن کا استعمال لازمی کرنا چاہتے ہیں تو ID کے آخر میں \"/r\" شامل کریں، مثلاً، \"9123456234/r\"۔"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "موڈ 1"),
         ("privacy_mode_impl_virtual_display_tip", "موڈ 2"),
         ("Enter privacy mode", "خفیہ موڈ میں داخل ہوں"),

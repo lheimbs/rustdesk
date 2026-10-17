@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Hamısını ayır"),
         ("True color (4:4:4)", "Tam rəng (4:4:4)"),
         ("Enable blocking user input", "İstifadəçi girişinin bloklanmasını aktivləşdir"),
-        ("id_input_tip", "ID, birbaşa IP və ya portla birlikdə domen (<domain>:<port>) daxil edə bilərsiniz.\nBaşqa serverdəki cihaza giriş etmək istəyirsinizsə, server ünvanını əlavə edin (<id>@<server_address>?key=<key_value>), məsələn,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nİctimai serverdəki cihaza giriş etmək istəyirsinizsə, \"<id>@public\" daxil edin, ictimai server üçün açar lazım deyil.\n\nİlk əlaqədə relay istifadəsini məcbur etmək istəyirsinizsə, ID-nin sonuna \"/r\" əlavə edin, məsələn, \"9123456234/r\"."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Rejim 1"),
         ("privacy_mode_impl_virtual_display_tip", "Rejim 2"),
         ("Enter privacy mode", "Məxfilik rejiminə keç"),

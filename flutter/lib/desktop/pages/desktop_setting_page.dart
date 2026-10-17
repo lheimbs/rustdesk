@@ -417,7 +417,7 @@ class _GeneralState extends State<_General> {
         _Card(title: 'Language', children: [language()]),
         if (!isWeb) hwcodec(),
         if (!isWeb) audio(context),
-        if (!isWeb) record(context),
+        // Handover: recording is refused on both sides (#12); no settings for it.
         if (!isWeb) WaylandCard(),
         other()
       ],
@@ -778,10 +778,6 @@ class _GeneralState extends State<_General> {
         if (!bind.isOutgoingOnly())
           _OptionCheckBox(context, 'Automatically record incoming sessions',
               kOptionAllowAutoRecordIncoming),
-        if (!bind.isIncomingOnly())
-          _OptionCheckBox(context, 'Automatically record outgoing sessions',
-              kOptionAllowAutoRecordOutgoing,
-              isServer: false),
         if (showRootDir && !bind.isOutgoingOnly())
           Row(
             children: [
@@ -1357,33 +1353,19 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
           final usePassword = model.approveMode != 'click';
 
           final isApproveModeFixed = isOptionFixed(kOptionApproveMode);
+          // Handover (#36, #35): a session always needs the current one-time password and then a click; the
+          // approval mode, the permanent password and the verification method are not offered.
           return _Card(title: 'Password', children: [
-            ComboBox(
-              enabled: !locked && !isApproveModeFixed,
-              keys: modeKeys,
-              values: modeValues,
-              initialKey: modeInitialKey,
-              onChanged: (key) => model.setApproveMode(key),
-            ).marginOnly(left: _kContentHMargin),
-            if (usePassword) radios[0],
-            if (usePassword)
-              _SubLabeledWidget(
-                  context,
-                  'One-time password length',
-                  Row(
-                    children: [
-                      ...lengthRadios,
-                    ],
-                  ),
-                  enabled: tmpEnabled && !locked),
-            if (usePassword) numericOneTimePassword,
-            if (usePassword) radios[1],
-            if (usePassword && !isChangePermanentPasswordDisabled())
-              _SubButton('Set permanent password', setPasswordDialog,
-                  permEnabled && !locked),
-            // if (usePassword)
-            //   hide_cm(!locked).marginOnly(left: _kContentHSubMargin - 6),
-            if (usePassword) radios[2],
+            _SubLabeledWidget(
+                context,
+                'One-time password length',
+                Row(
+                  children: [
+                    ...lengthRadios,
+                  ],
+                ),
+                enabled: !locked),
+            numericOneTimePassword,
           ]);
         })));
   }

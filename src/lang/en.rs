@@ -187,7 +187,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("pull_group_failed_tip", "Failed to refresh group"),
         ("display_is_plugged_out_msg", "The display is plugged out, switch to the first display."),
         ("selinux_tip", "SELinux is enabled on your device, which may prevent RustDesk from running properly as controlled side."),
-        ("id_input_tip", "You can input an ID, a direct IP, or a domain with a port (<domain>:<port>).\nIf you want to access a device on another server, please append the server address (<id>@<server_address>?key=<key_value>), for example,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nIf you want to access a device on a public server, please input \"<id>@public\", the key is not needed for public server.\n\nIf you want to force the use of a relay connection on the first connection, add \"/r\" at the end of the ID, for example, \"9123456234/r\"."),
+        ("id_input_tip", "Enter the ID of the remote device. It is reached only through your own server; other servers, direct IP addresses and public servers are not supported.\n\nTo force a relay connection on the first connection, add \"/r\" at the end of the ID, for example \"9123456234/r\"."),
         ("privacy_mode_impl_mag_tip", "Mode 1"),
         ("privacy_mode_impl_virtual_display_tip", "Mode 2"),
         ("idd_not_support_under_win10_2004_tip", "Indirect display driver is not supported. Windows 10, version 2004 or newer is required."),

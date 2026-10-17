@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Deconectează toate"),
         ("True color (4:4:4)", "Culori reale (4:4:4)"),
         ("Enable blocking user input", "Activează blocarea intrărilor utilizatorului"),
-        ("id_input_tip", "Introdu ID-ul sau adresa IP a dispozitivului la distanță"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Modul privat prin Magnificare — nu este suportat pe toate sistemele"),
         ("privacy_mode_impl_virtual_display_tip", "Modul privat prin monitor virtual — necesită driverul de monitor virtual"),
         ("Enter privacy mode", "Intră în modul privat"),

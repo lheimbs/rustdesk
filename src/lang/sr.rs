@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Iskopčaj sve"),
         ("True color (4:4:4)", "Prava boja (4:4:4)"),
         ("Enable blocking user input", "Omogući blokiranje korisnikovog unosa"),
-        ("id_input_tip", "Možete uneti ID, direktnu IP adresu ili domen sa portom (<domain>:<port>).\nAko želite da pristupite uređaju na drugom serveru, dodajte adresu servera (<id>@<server_address>?key=<key_value>), na primer,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nAko želite da pristupite uređaju na javnom serveru, unesite \"<id>@public\", ključ nije potreban za javni server.\n\nAko želite da prisilite korišćenje posredne konekcije pri prvom spajanju, dodajte \"/r\" na kraj ID-a, na primer, \"9123456234/r\"."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Režim 1"),
         ("privacy_mode_impl_virtual_display_tip", "Režim 2"),
         ("Enter privacy mode", "Uđi u mod privatnosti"),

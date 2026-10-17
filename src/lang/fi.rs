@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Irrota kaikki"),
         ("True color (4:4:4)", "Tarkka väri (4:4:4)"),
         ("Enable blocking user input", "Estä käyttäjän syöte etäpäässä"),
-        ("id_input_tip", "Anna etätunnus muodossa tunnus@palvelin"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Yksityisyystila käyttää suurennustekniikkaa piilottaakseen sisällön."),
         ("privacy_mode_impl_virtual_display_tip", "Yksityisyystila käyttää virtuaalinäyttöä tietosuojan takaamiseksi."),
         ("Enter privacy mode", "Siirry yksityisyystilaan"),

@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Iscollega totu"),
         ("True color (4:4:4)", "Colore reale (4:4:4)"),
         ("Enable blocking user input", "Abìlita blocu insertada utente"),
-        ("id_input_tip", "Podes insertare un'ID, un'IP diretu o unu domìniu cun una ghenna (<dominio>:<porta>).\nSi boles atzèdere a unu dispositivu in un'àteru serbidore, annanghe s'indiritzu de su serbidore (<id>@<indiritzu_serbidore >?key=<valore_crae>), a esèmpiu\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nSi boles atzèdere a unu dispositivu in unu serbidore pùblicu, inserta \"<id>@public\", pro su serbidore pùblicu sa crae non serbit\n\nSi boles fortzare s'impreu de una connessione de inoltru a sa prima connessione, annanghe \"/r\" a sa fine de s'ID, a esèmpiu \"9123456234/r\"."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Manera 1"),
         ("privacy_mode_impl_virtual_display_tip", "Manera 2"),
         ("Enter privacy mode", "Intra in modalidade de riservadesa"),

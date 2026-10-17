@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "拔出所有"),
         ("True color (4:4:4)", "全彩模式（4:4:4）"),
         ("Enable blocking user input", "允許封鎖使用者輸入"),
-        ("id_input_tip", "您可以輸入 ID、IP、或網域名稱+連接埠（<網域名稱>:<連接埠>）。\n如果您要存取位於其他伺服器上的裝置，請在 ID 之後新增伺服器位址（<ID>@<伺服器位址>?key=<金鑰>）\n例如：9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=\n要存取公共伺服器上的裝置，請輸入「<id>@public」，不需輸入金鑰。\n\n如果您想要在第一次連線時，強制使用中繼連線，請在 ID 的結尾新增「/r」，例如，「9123456234/r」。"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "模式 1"),
         ("privacy_mode_impl_virtual_display_tip", "模式 2"),
         ("Enter privacy mode", "進入隱私模式"),

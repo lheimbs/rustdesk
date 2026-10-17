@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "அனைத்தையும் துண்டி"),
         ("True color (4:4:4)", "உண்மை நிறம் (4:4:4)"),
         ("Enable blocking user input", "பயனர் உள்ளீடு தடுப்பு இயக்கு"),
-        ("id_input_tip", "ஐடி உள்ளீடு எழுத்துகள் எண்கள் மட்டும்"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Windows Magnifier API"),
         ("privacy_mode_impl_virtual_display_tip", "Virtual Display Driver"),
         ("Enter privacy mode", "தனியுரிமை முறையில் நுழை"),

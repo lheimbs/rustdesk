@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Барлығын ажырату"),
         ("True color (4:4:4)", "Шынайы түс (4:4:4)"),
         ("Enable blocking user input", "Қолданушы еңгізуін бұғаттауды іске қосу"),
-        ("id_input_tip", "Сіз ID, тікелей IP немесе портпен домен (<domain>:<port>) еңгізуіңізге болады.\nБасқа сербердегі құрылғыға қол жеткізгіңіз келсе, сербер мекенжайын қосыңыз (<id>@<server_address>?key=<key_value>), мысалы,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nЖария сербердегі құрылғыға қол жеткізгіңіз келсе, \"<id>@public\" еңгізіңіз, жария сербер үшін кілт қажет емес.\n\nБірінші қосылымда релай қосылымын мәжбүрлеп қолданғыңыз келсе, ID соңына \"/r\" қосыңыз, мысалы, \"9123456234/r\"."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "1-мода"),
         ("privacy_mode_impl_virtual_display_tip", "2-мода"),
         ("Enter privacy mode", "Құпиялылық модасына кіру"),

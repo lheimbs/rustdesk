@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "فصل الكل"),
         ("True color (4:4:4)", "اللون الحقيقي (4:4:4)"),
         ("Enable blocking user input", "تمكين حظر إدخال المستخدم"),
-        ("id_input_tip", "يرجى إدخال المعرف بشكل صحيح"),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "وضع الخصوصية مفعل. سيتم تعطيل بعض الميزات."),
         ("privacy_mode_impl_virtual_display_tip", "وضع الخصوصية مفعل. يتم استخدام شاشة افتراضية."),
         ("Enter privacy mode", "دخول وضع الخصوصية"),

@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Відключити все"),
         ("True color (4:4:4)", "Справжній колір (4:4:4)"),
         ("Enable blocking user input", "Блокувати введення для користувача"),
-        ("id_input_tip", "Ви можете ввести ID, безпосередню IP, або ж домен з портом (<домен>:<порт>).\nЯкщо ви хочете отримати доступ до пристрою на іншому сервері, будь ласка, додайте адресу сервера (<id>@<адреса_сервера>?key=<значення_ключа>), наприклад,\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nЯкщо ви хочете отримати доступ до пристрою на публічному сервері, будь ласка, введіть \"<id>@public\", для публічного сервера ключ не потрібен."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Режим 1"),
         ("privacy_mode_impl_virtual_display_tip", "Режим 2"),
         ("Enter privacy mode", "Увійти в режим конфіденційності"),

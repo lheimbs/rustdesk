@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "ყველას გამორთვა"),
         ("True color (4:4:4)", "True color (4:4:4)"),
         ("Enable blocking user input", "მომხმარებლის შეყვანის დაბლოკვის დაშვება"),
-        ("id_input_tip", "შეგიძლიათ შეიყვანოთ იდენტიფიკატორი, პირდაპირი IP მისამართი ან დომენი პორტით (<დომენი>:<პორტი>).\nთუ გჭირდებათ წვდომა მოწყობილობაზე სხვა სერვერზე, დაამატეთ სერვერის მისამართი (<id>@<სერვერის_მისამართი>?key=<გასაღების_მნიშვნელობა>), მაგალითად:\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nთუ გჭირდებათ წვდომა მოწყობილობაზე საჯარო სერვერზე, შეიყვანეთ \"<id>@public\", გასაღები საჯარო სერვერისთვის არ არის საჭირო."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "რეჟიმი 1"),
         ("privacy_mode_impl_virtual_display_tip", "რეჟიმი 2"),
         ("Enter privacy mode", "კონფიდენციალურობის რეჟიმის ჩართვა"),

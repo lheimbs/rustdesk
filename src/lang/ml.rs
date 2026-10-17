@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "എല്ലാം ഊരുക"),
         ("True color (4:4:4)", "ട്രൂ കളർ (4:4:4)"),
         ("Enable blocking user input", "യൂസർ ഇൻപുട്ട് തടയുന്നത് അനുവദിക്കുക"),
-        ("id_input_tip", "നിങ്ങൾക്ക് ഐഡി, ഏലിയാസ് അല്ലെങ്കിൽ ഐപി നൽകാം."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "മാഗ്നിഫയർ സ്വകാര്യ മോഡ്"),
         ("privacy_mode_impl_virtual_display_tip", "വെർച്വൽ ഡിസ്‌പ്ലേ സ്വകാര്യ മോഡ്"),
         ("Enter privacy mode", "സ്വകാര്യ മോഡിലേക്ക് കടക്കുക"),

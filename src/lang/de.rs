@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Alle ausschalten"),
         ("True color (4:4:4)", "True Color (4:4:4)"),
         ("Enable blocking user input", "Blockieren von Benutzereingaben aktivieren"),
-        ("id_input_tip", "Sie können eine ID, eine direkte IP oder eine Domäne mit einem Port (<domain>:<port>) eingeben.\nWenn Sie auf ein Gerät auf einem anderen Server zugreifen wollen, fügen Sie bitte die Serveradresse (<id>@<server_address>?key=<key_value>) hinzu, zum Beispiel\n9123456234@192.168.16.1:21117?key=5Qbwsde3unUcJBtrx9ZkvUmwFNoExHzpryHuPUdqlWM=.\nWenn Sie auf ein Gerät auf einem öffentlichen Server zugreifen wollen, geben Sie bitte \"<id>@public\" ein. Der Schlüssel wird für öffentliche Server nicht benötigt.\n\nWenn Sie bei der ersten Verbindung die Verwendung einer Relay-Verbindung erzwingen wollen, fügen Sie \"/r\" am Ende der ID hinzu, zum Beispiel \"9123456234/r\"."),
+        ("id_input_tip", "Geben Sie die ID des entfernten Geräts ein. Es wird nur über Ihren eigenen Server erreicht; andere Server, direkte IP-Adressen und öffentliche Server werden nicht unterstützt.\n\nUm beim ersten Verbinden eine Relaisverbindung zu erzwingen, hängen Sie \"/r\" an die ID an, zum Beispiel \"9123456234/r\"."),
         ("privacy_mode_impl_mag_tip", "Modus 1"),
         ("privacy_mode_impl_virtual_display_tip", "Modus 2"),
         ("Enter privacy mode", "Datenschutzmodus aktiviert"),

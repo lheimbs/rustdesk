@@ -541,7 +541,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Plug out all", "Rút tất cả"),
         ("True color (4:4:4)", "Màu thực (4:4:4)"),
         ("Enable blocking user input", "Cho phép chặn đầu vào người dùng"),
-        ("id_input_tip", "Nhập ID hoặc IP."),
+        ("id_input_tip", ""),
         ("privacy_mode_impl_mag_tip", "Chế độ riêng tư (Magnifier)"),
         ("privacy_mode_impl_virtual_display_tip", "Chế độ riêng tư (Virtual Display)"),
         ("Enter privacy mode", "Vào chế độ riêng tư"),

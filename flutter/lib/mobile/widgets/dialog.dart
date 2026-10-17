@@ -161,21 +161,7 @@ void showServerSettingsWithValue(
                         relayServerMsg.value),
                     SizedBox(height: 8),
                   ],
-                  buildField(
-                    translate('API Server'),
-                    apiCtrl,
-                    apiServerMsg.value,
-                    validator: (v) {
-                      if (v != null && v.isNotEmpty) {
-                        if (!(v.startsWith('http://') ||
-                            v.startsWith("https://"))) {
-                          return translate("invalid_http");
-                        }
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 8),
+                  // Handover: no API server exists in this fork (audit A3); the field is not offered.
                   buildField('Key', keyCtrl, ''),
                   if (isInProgress)
                     Padding(
