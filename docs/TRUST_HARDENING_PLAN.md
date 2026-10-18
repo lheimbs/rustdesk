@@ -689,6 +689,19 @@ Regression matrix of the approval epic (what each story changed that existing be
 | full Linux controller | A5 (`lite` is off) | connects to the lite and the Windows build |
 | egress | A5, A3 | egress-all |
 
+### 2ai. Approval follow-ups (2026-10-18; epic #55)
+
+| Follow-up | Fix | Measured |
+|---|---|---|
+| the CM card said "Connected" while the proof was pending | the Accept click only marks the card "approving" (Dart `Client.approving`); the server sends the connected login (`authorized`) to the CM after the approval | VM: card reads "Waiting for the administrator's confirmation..." with only Cancel; after the password "Connected" |
+| the wait blocked the connection's message loop (up to 60 s, 120 s on Windows) | the proof runs in its own task; the loop receives the result on a channel (`rx_approval`) | VM: controller killed during the wait: connection closed within a second |
+| the sudo dialog showed an orphan after a disconnect | `request(closed)` polls, and kills the dialog child when the connection is gone | VM: no dialog after the disconnect |
+| the dialog let a person type another user's name | `gtk_sudo::spawn_as_self`: always the dialog, always the user the server runs as, no edit button (also fixes `--server` mode, where the old helper chose the terminal variant) | VM: dialog shows the fixed user |
+| the controller retried after a decline | the decline text contains "not allowed", which `client::check_if_retry` treats as final (unit test) | VM and laptop: one final error, no second connection |
+| Windows (same follow-ups) | same loop change; a declined UAC prompt denies at once | laptop: Yes -> desktop; No -> `approval-denied`, final error, no retry; teardown clean |
+
+Regression surface: every Windows and Linux Accept click (new channel arm in `connection.rs`); the CM card's unauthorised state (Dart); `gtk_sudo` (new entry only, existing entries unchanged).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
