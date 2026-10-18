@@ -22,6 +22,28 @@ can be ended at any time from either side. The controller never sends a password
 | File transfer, clipboard | with the user's rights (files the user cannot read or write stay closed) | unchanged: still the user's rights |
 | Change Windows settings that need an administrator | only by asking for tier 1 | yes, through the screens above |
 
+## Who may allow a connection (administrator approval)
+
+Spec: `docs/APPROVAL_SPEC.md`. A connection is only offered to an **administrator signed in at the machine** (Windows: member of
+Administrators, Linux: a sudoer). Nobody else sees a request or the one-time password, and nobody can allow a connection by
+clicking alone: the click starts a proof that the machine's service checks.
+
+| | Windows | Linux (lite build) |
+|---|---|---|
+| Who counts | the signed-in user has an administrator account (UAC split token) | the user may run all commands through sudo (`sudo -l -U`, checked by the root service) |
+| Refused with a message | nobody signed in; standard user; UAC settings that would let a program answer the prompt | nobody signed in; not a sudoer; sudo without a password (`NOPASSWD`) |
+| The proof | the Windows (UAC) prompt, answered Yes | the sudo password dialog, with the user's own name and password |
+| Without the service | refused ("approval service not available") | refused (same) |
+
+What the controller sees when refused: "No administrator is signed in at this machine", "Only an administrator can allow this connection", "This
+machine's settings would let a program approve silently, so remote control is refused", or "The approval service on this machine is not
+available". Connection-log lines: `approval-refused <reason>`, `approval-denied` (the administrator said No, closed the dialog, or did not answer in 2 minutes).
+There is no setting that turns this off and no certificate that skips it; a person who is not an administrator and needs help has an
+administrator sit down or sign in.
+
+The **lite** build (`HANDOVER_LITE=1` at build time) can only be controlled: no connection page, no outgoing connection, no controller
+credential. On Linux the lite build is the controlled side; the full Linux build only controls.
+
 ## Asking for administrator access (what happens)
 
 1. The controller picks **Request administrator access** in the toolbar's actions menu (lightning icon) and confirms. Its

@@ -663,6 +663,32 @@ Not tested (needs the owner, like E7 T-12): a standard user signed in (expect `n
 `proof-meaningless`), nobody signed in. These have unit tests only (`approval.rs`, 17 tests, the decision is shared with Linux).
 Regression surface: every Windows connection that reaches the Accept prompt; the E7/E8 request code is reused unchanged; resume (E10) bypasses the prompt as before.
 
+### 2ah. A4 and A6: the one-time password for approvers, regression matrix (2026-10-18; stories #59 and #61)
+
+`get_option("approver")` (a pseudo option answered by `server/approval_ui.rs`) tells the home page whether to draw the one-time password:
+Windows from the process's own token (UAC split token or elevated), Linux by asking the service (`Check`, cached 5 s, first answer waits at most 1.5 s).
+No answer is "not an approver". It is convenience, not the gate: the approval itself is.
+
+| Check | Result |
+|---|---|
+| Linux VM, lite build: standard user's home window | "The one-time password is shown to administrators only", ID shown |
+| Linux VM: sudoer's home window | password shown |
+| Windows laptop: administrator's home window | password shown (the hidden case needs a standard account: owner session) |
+| `cargo test --lib approval` | 17 pass |
+| egress-all with live gated servers (selftest, server, ui, down, offline, wrongkey) plus the lite UI | all PASS (a first run without the issuer key set was void: hbbs refuses to start without `HANDOVER_CA_PUB`) |
+| admission matrix | not re-run: no change to credentials, tokens or the servers; the only new IPC is a local unix socket (Linux) and a service request on the existing local pipe (Windows) |
+
+Regression matrix of the approval epic (what each story changed that existing behaviour depends on):
+
+| Path | Changed by | Checked |
+|---|---|---|
+| Linux accept prompt (lite and full with a server) | A3 | VM: 4 cases, decline, wrong user, non-root proof |
+| Windows accept prompt | A2 | laptop: Yes, No, unanswered |
+| tier 1 request in the same session (E7-E9) | A2 reuses the request code | laptop: request, Allow, UAC Yes: granted |
+| E10 resume and the sign-in screen | not touched (resume bypasses the prompt path) | not re-run; owner session |
+| full Linux controller | A5 (`lite` is off) | connects to the lite and the Windows build |
+| egress | A5, A3 | egress-all |
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

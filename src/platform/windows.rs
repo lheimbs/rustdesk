@@ -1070,6 +1070,28 @@ fn session_user_is_admin(session_id: u32) -> bool {
     ok && (kind == 2 || kind == 3)
 }
 
+/// A4: is the user this process runs as an administrator (UAC split token or elevated)? For the display of the one-time password only.
+pub fn current_user_is_admin() -> bool {
+    use base::platform::windows::RAIIHandle;
+    unsafe {
+        let mut token: HANDLE = mem::zeroed();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == FALSE {
+            return false;
+        }
+        let _token = RAIIHandle(token);
+        let mut kind: u32 = 0;
+        let mut size: DWORD = 0;
+        let ok = GetTokenInformation(
+            token,
+            winapi::um::winnt::TokenElevationType,
+            &mut kind as *mut _ as *mut c_void,
+            mem::size_of::<u32>() as _,
+            &mut size,
+        ) != FALSE;
+        ok && (kind == 2 || kind == 3)
+    }
+}
+
 /// No helper without a grant (E9): when the grant is gone or the helper exited, end and forget it.
 fn stop_elevation_helper_without_grant(
     helper: &mut HANDLE,

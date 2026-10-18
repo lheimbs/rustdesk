@@ -805,5 +805,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("elevation_active_tip", "Administratorzugriff ist aktiv (noch {} Minuten). Das steuernde Gerät kann Windows-Abfragen und den Sperrbildschirm sehen und bedienen."),
         ("Stop administrator access", "Administratorzugriff beenden"),
         ("elevation_keep_connected_tip", "Über eine Abmeldung hinweg verbunden bleiben (15 Min.); es kann dann am Anmeldebildschirm tippen."),
+        ("The one-time password is shown to administrators only", "Das Einmalpasswort wird nur Administratoren angezeigt"),
     ].iter().cloned().collect();
 }

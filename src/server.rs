@@ -73,6 +73,7 @@ mod connection_log;
 mod login_gate;
 pub(crate) mod approval;
 pub(crate) mod approval_grant;
+pub(crate) mod approval_ui;
 #[cfg(target_os = "linux")]
 pub(crate) mod approval_linux;
 pub(crate) mod elevation;
