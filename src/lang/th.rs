@@ -806,5 +806,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Stop administrator access", ""),
         ("elevation_keep_connected_tip", ""),
         ("The one-time password is shown to administrators only", ""),
+        ("Waiting for the administrator's confirmation", ""),
     ].iter().cloned().collect();
 }

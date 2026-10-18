@@ -55,16 +55,25 @@ pub fn run(cmds: Vec<&str>) -> ResultType<()> {
     }
 }
 
+/// The administrator approval (docs/APPROVAL_SPEC.md): always the dialog, always for the user this process runs as, so the
+/// name cannot be changed to someone else's. The caller waits for the child and can end it.
+pub fn spawn_as_self(cmds: Vec<&str>) -> ResultType<std::process::Child> {
+    let mut args = vec!["-gtk-sudo", "gui-self"];
+    args.append(&mut cmds.clone());
+    Ok(crate::run_me(args)?)
+}
+
 pub fn exec() {
     let mut args = vec![];
     for arg in std::env::args().skip(3) {
         args.push(arg);
     }
     let cmd_mode = std::env::args().nth(2) == Some("cmd".to_string());
+    let own = std::env::args().nth(2) == Some("gui-self".to_string());
     if cmd_mode {
         cmd(args);
     } else {
-        ui(args);
+        ui(args, own);
     }
 }
 
@@ -92,7 +101,7 @@ fn cmd(args: Vec<String>) {
     }
 }
 
-fn ui(args: Vec<String>) {
+fn ui(args: Vec<String>, own: bool) {
     // https://docs.gtk.org/gtk4/ctor.Application.new.html
     // https://docs.gtk.org/gio/type_func.Application.id_is_valid.html
     let application = gtk::Application::new(None, Default::default());
@@ -106,7 +115,14 @@ fn ui(args: Vec<String>) {
     let rx_to_ui_clone = rx_to_ui.clone();
     let tx_from_ui_clone = tx_from_ui.clone();
 
-    let username = Arc::new(Mutex::new(crate::platform::get_active_username()));
+    let session_user = move || {
+        if own {
+            crate::server::approval_linux::user_name(unsafe { hbb_common::libc::getuid() }).unwrap_or_default()
+        } else {
+            crate::platform::get_active_username()
+        }
+    };
+    let username = Arc::new(Mutex::new(session_user()));
     let username_clone = username.clone();
 
     application.connect_activate(glib::clone!(@weak application =>move |_| {
@@ -151,10 +167,10 @@ fn ui(args: Vec<String>) {
 
     let tx_to_ui_clone = tx_to_ui.clone();
     std::thread::spawn(move || {
-        let acitve_user = crate::platform::get_active_username();
+        let acitve_user = session_user();
         let mut initial_password = None;
         if acitve_user != "root" {
-            if let Err(e) = tx_to_ui_clone.send(Message::PasswordPrompt(("".to_string(), true))) {
+            if let Err(e) = tx_to_ui_clone.send(Message::PasswordPrompt(("".to_string(), !own))) {
                 log::error!("Channel error: {e:?}");
                 std::process::exit(EXIT_CODE);
             }
