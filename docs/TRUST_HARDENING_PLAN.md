@@ -639,6 +639,30 @@ blocks the connection's message loop for up to 60 s; the dialog lets a person ty
 dialog says nothing); the test VM has no seat, so the "active user" lookup of the real service was not exercised (the approval socket does not use it).
 Regression surface: every Linux connection that reaches the Accept prompt (lite and full builds with a server); Windows unchanged.
 
+### 2ag. A2: administrator approval on Windows (2026-10-18; story A2 of the approval epic, #57)
+
+The service answers `ServiceRequest::ApprovalCheck` (new, from the server it launched): nobody signed in in that session -> `no-administrator`; the session
+user's token is not a UAC split token (`TokenElevationType` limited or full means administrator) -> `not-administrator`; the UAC policy would make the prompt
+meaningless (`uac_allows_elevation`, F10) -> `proof-meaningless`. The server asks after the one-time password and before any card; a refusal is a login
+error and nobody at the machine sees a request. The Accept click then starts the existing E7/E8 request (`create_in_service`) and the UAC prompt
+(`--elevation-proof <nonce>`), polls the service, and ends the request again at once (`approve_connection`): this approves the connection, it grants no
+tier 1. Answering No ends it immediately (`ShellExecuteW` returns when the prompt is answered); otherwise it times out after `PROOF_SECS` (120 s).
+
+Measured on the test laptop (build from this branch, administrator account):
+
+| Case | Result |
+|---|---|
+| password right, Accept | UAC prompt on the secure desktop; the controller stays at "Connecting..." until it is answered |
+| prompt answered Yes | desktop appears on the controller (`authorized peer`) |
+| tier 1 in the same session (request, Allow, UAC Yes) | `elevation-requested`, `elevation-granted ... approved by <account>`: unchanged |
+| prompt left unanswered (first build) | `approval-denied` after the timeout, no grant |
+| prompt answered No (final build) | `approval-denied` at once, no grant; the controller retries on its own and needs a new Accept |
+| teardown | uninstall, `w_left.ps1` all zero |
+
+Not tested (needs the owner, like E7 T-12): a standard user signed in (expect `not-administrator`, no card), UAC policy changed (expect
+`proof-meaningless`), nobody signed in. These have unit tests only (`approval.rs`, 17 tests, the decision is shared with Linux).
+Regression surface: every Windows connection that reaches the Accept prompt; the E7/E8 request code is reused unchanged; resume (E10) bypasses the prompt as before.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
