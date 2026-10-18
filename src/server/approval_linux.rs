@@ -177,32 +177,36 @@ pub async fn check() -> Result<(), Refusal> {
     }
 }
 
-/// Start the sudo proof (password dialog) and wait for the service to confirm it. True only when it did.
-pub async fn request() -> bool {
+/// Start the sudo proof (password dialog) and wait for the service to confirm it. True only when it did. `closed` says the
+/// connection is gone: the dialog is closed with it.
+pub async fn request(closed: impl Fn() -> bool) -> bool {
     let nonce = super::elevation_grant::new_nonce();
     if !matches!(ask(Request::Create { nonce: nonce.clone() }).await, Ok(Reply::Done)) {
         return false;
     }
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let cmd = format!("'{}' --approval-proof {}", exe.replace('\'', "'\\''"), nonce);
-    let mut dialog = tokio::task::spawn_blocking(move || crate::platform::gtk_sudo::run_as_self(vec![&cmd]).is_ok());
+    let Ok(mut dialog) = crate::platform::gtk_sudo::spawn_as_self(vec![&cmd]) else {
+        let _ = ask(Request::Cancel { nonce }).await;
+        return false;
+    };
     let deadline = Instant::now() + PROOF_TTL;
     let mut done = false;
     let granted = loop {
         if matches!(ask(Request::Poll { nonce: nonce.clone() }).await, Ok(Reply::Granted)) {
             break true;
         }
-        if done || Instant::now() >= deadline {
+        if done || closed() || Instant::now() >= deadline {
             break false;
         }
-        tokio::select! {
-            r = &mut dialog => { done = true; let _ = r; }
-            _ = tokio::time::sleep(Duration::from_millis(300)) => {}
-        }
+        done = !matches!(dialog.try_wait(), Ok(None));
+        tokio::time::sleep(Duration::from_millis(300)).await;
     };
     if !granted {
+        let _ = dialog.kill();
         let _ = ask(Request::Cancel { nonce }).await;
     }
+    let _ = dialog.wait();
     granted
 }
 

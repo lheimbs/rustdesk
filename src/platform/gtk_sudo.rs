@@ -56,17 +56,11 @@ pub fn run(cmds: Vec<&str>) -> ResultType<()> {
 }
 
 /// The administrator approval (docs/APPROVAL_SPEC.md): always the dialog, always for the user this process runs as, so the
-/// name cannot be changed to someone else's.
-pub fn run_as_self(cmds: Vec<&str>) -> ResultType<()> {
+/// name cannot be changed to someone else's. The caller waits for the child and can end it.
+pub fn spawn_as_self(cmds: Vec<&str>) -> ResultType<std::process::Child> {
     let mut args = vec!["-gtk-sudo", "gui-self"];
     args.append(&mut cmds.clone());
-    let mut child = crate::run_me(args)?;
-    let exit_status = child.wait()?;
-    if exit_status.success() {
-        Ok(())
-    } else {
-        bail!("child exited with status: {:?}", exit_status);
-    }
+    Ok(crate::run_me(args)?)
 }
 
 pub fn exec() {

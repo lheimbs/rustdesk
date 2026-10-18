@@ -784,7 +784,8 @@ impl Connection {
                                     let tx = tx_approval.clone();
                                     #[cfg(target_os = "linux")]
                                     tokio::spawn(async move {
-                                        tx.send(super::approval_linux::request().await).ok();
+                                        let ok = super::approval_linux::request(|| tx.is_closed()).await;
+                                        tx.send(ok).ok();
                                     });
                                     #[cfg(windows)]
                                     {
