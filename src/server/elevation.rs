@@ -289,7 +289,7 @@ pub async fn approve_connection(conn_id: i32, serial: u64) -> bool {
     let arg = format!("--elevation-proof {}", nonce);
     std::thread::spawn(move || {
         if let Err(err) = crate::platform::elevate(&arg) {
-            log::warn!("approval: the UAC prompt could not be started: {}", err);
+            hbb_common::log::warn!("approval: the UAC prompt could not be started: {}", err);
         }
     });
     let deadline = std::time::Instant::now() + Duration::from_secs(PROOF_SECS);
