@@ -611,6 +611,34 @@ from the lite binary is a later refinement.
 
 Regression surface: the full builds (every change is `cfg!(feature = "lite")`, false there); `is_outgoing_only` keeps its value without the feature.
 
+### 2af. A3: administrator approval on the Linux controlled side (2026-10-18; story A3 of the approval epic, #58)
+
+Root service (`--service`) listens on the `_approval` socket (`src/server/approval_linux.rs`); a user's `--server` asks about itself only (peer uid):
+`Check` runs `sudo -l -U <user>` as root and classifies it (`approval::classify_sudo_list`: a rule that allows ALL as ALL is an administrator;
+`NOPASSWD:` or `!authenticate` makes the proof meaningless). After the one-time password, a non-approver gets a login error and no one sees a request.
+The CM's Accept no longer authorises: the server registers a one-time nonce (`approval_grant.rs`, 60 s) and runs `--approval-proof <nonce>` through
+sudo (the existing `gtk_sudo` password dialog). Only a root peer may send the proof, and the uid sudo recorded in that process (`SUDO_UID`, read from
+`/proc/<pid>/environ`) must be the user that asked. No service: refused (fail closed).
+
+Measured on the VM with the lite build and the three throw-away users (`kb/scripts/approval-users.sh`), full Linux controller connecting:
+
+| Case | Result |
+|---|---|
+| no approval service running | refused, `approval-refused service-unavailable`, no card |
+| sudoer with password: card appears, Accept | the controller stays at "Connecting..." until the proof; the dialog opens |
+| ... dialog with another user's name and a wrong password | rejected by the dialog ("Sorry, try again"), nothing granted |
+| ... Cancel | `approval-denied`, connection closed |
+| ... own name and password | `approval: granted for uid 1002`, `authorized peer`, desktop visible |
+| standard user | refused `not-administrator` (the controller sees "Only an administrator can allow this connection"); no card on the user's screen |
+| `NOPASSWD` sudoer | refused `proof-meaningless` |
+| `--approval-proof` started by a standard user (not root) | service: `a proof from uid ... (not root) was refused` |
+| unit tests (`cargo test --lib approval`) | 16 pass (classifier incl. partial rules, NOPASSWD, `!authenticate`; grant state: other user, expiry, replace, cancel) |
+
+Known gaps (follow-ups, none blocks the stage): the CM card shows "Connected" while the server waits for the proof (cosmetic); the wait
+blocks the connection's message loop for up to 60 s; the dialog lets a person type another user's name (the service rejects that proof, but the
+dialog says nothing); the test VM has no seat, so the "active user" lookup of the real service was not exercised (the approval socket does not use it).
+Regression surface: every Linux connection that reaches the Accept prompt (lite and full builds with a server); Windows unchanged.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the

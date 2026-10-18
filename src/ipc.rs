@@ -400,6 +400,10 @@ pub enum Data {
     ElevationReply(crate::server::elevation_grant::ServiceReply),
     #[cfg(windows)]
     ElevationCm(crate::server::elevation::CmMessage),
+    #[cfg(target_os = "linux")]
+    Approval(crate::server::approval_linux::Request),
+    #[cfg(target_os = "linux")]
+    ApprovalReply(crate::server::approval_linux::Reply),
     UserSid(Option<u32>),
     OnlineStatus(Option<(i64, bool)>),
     Config((String, Option<String>)),

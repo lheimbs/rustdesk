@@ -334,6 +334,16 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::server::elevation::send_proof(nonce, args.get(2).map_or(false, |a| a == "keep"));
             }
             return None;
+        } else if args[0] == "--approval-proof" {
+            // Started through sudo: a root process that tells the service the administrator approved (APPROVAL_SPEC.md 5).
+            #[cfg(target_os = "linux")]
+            if let Some(nonce) = args.get(1) {
+                if let Err(e) = crate::server::approval_linux::send_proof(nonce) {
+                    log::warn!("approval proof failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return None;
         } else if args[0] == "--service" {
             log::info!("start --service");
             crate::start_os_service();

@@ -1073,6 +1073,10 @@ pub fn start_os_service() {
     std::thread::spawn(|| {
         allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));
     });
+    // Who may allow a connection (docs/APPROVAL_SPEC.md): the root side of the administrator approval.
+    std::thread::spawn(|| {
+        allow_err!(crate::server::approval_linux::serve());
+    });
 
     // DRM/KMS capture producer (opt-in `drm` feature): a dedicated thread + runtime that streams
     // scanout frames to the user `--server` over the `_drm` service-scoped channel. Runs here

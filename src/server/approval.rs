@@ -23,11 +23,13 @@ pub enum ProofPolicy {
     Meaningless,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Refusal {
     NoAdministrator,
     NotAdministrator,
     ProofMeaningless,
+    /// The service that checks and verifies approvals did not answer (not running, or not reachable): fail closed.
+    ServiceUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +40,9 @@ pub enum Approval {
 }
 
 pub const NO_ADMINISTRATOR: &str = "No administrator is signed in at this machine";
+pub const DECLINED: &str = "The administrator did not approve";
 pub const NOT_ADMINISTRATOR: &str = "Only an administrator can allow this connection";
+pub const SERVICE_UNAVAILABLE: &str = "The approval service on this machine is not available";
 pub const PROOF_MEANINGLESS: &str =
     "This machine's settings would let a program approve silently, so remote control is refused";
 
@@ -49,6 +53,7 @@ impl Refusal {
             Refusal::NoAdministrator => NO_ADMINISTRATOR,
             Refusal::NotAdministrator => NOT_ADMINISTRATOR,
             Refusal::ProofMeaningless => PROOF_MEANINGLESS,
+            Refusal::ServiceUnavailable => SERVICE_UNAVAILABLE,
         }
     }
 
@@ -58,6 +63,7 @@ impl Refusal {
             Refusal::NoAdministrator => "no-administrator",
             Refusal::NotAdministrator => "not-administrator",
             Refusal::ProofMeaningless => "proof-meaningless",
+            Refusal::ServiceUnavailable => "service-unavailable",
         }
     }
 }
@@ -69,6 +75,52 @@ pub fn decide(user: SessionUser, proof: ProofPolicy) -> Approval {
         (SessionUser::Administrator, ProofPolicy::Meaningless) => Approval::Refused(Refusal::ProofMeaningless),
         (SessionUser::Administrator, ProofPolicy::Meaningful) => Approval::Approver,
     }
+}
+
+/// Linux: read what `sudo -l -U <user>` (run by root) says about a user.
+/// Administrator = a rule that lets the user run ALL commands as ALL users; the proof is meaningless when that rule needs no
+/// password (`NOPASSWD:`) or when sudo is configured not to authenticate (`!authenticate`), because a program of the user
+/// could then pass it silently.
+pub fn classify_sudo_list(output: &str) -> (SessionUser, ProofPolicy) {
+    let mut admin = false;
+    let mut silent = false;
+    let mut in_rules = false;
+    let mut in_defaults = false;
+    for line in output.lines() {
+        let t = line.trim();
+        if t.contains("may run the following commands") {
+            in_rules = true;
+            continue;
+        }
+        if t.starts_with("Matching Defaults entries") {
+            in_defaults = true;
+            continue;
+        }
+        if t.is_empty() {
+            in_defaults = false;
+        }
+        // Only the global block counts; the command-specific one ("Runas and Command-specific defaults") does not.
+        if in_defaults && t.split(|c: char| c == ',' || c.is_whitespace()).any(|w| w == "!authenticate") {
+            silent = true;
+        }
+        if !in_rules || !t.starts_with('(') {
+            continue;
+        }
+        let Some((who, rest)) = t.split_once(')') else { continue };
+        let runas_all = who.trim_start_matches('(').split(|c| c == ':' || c == ',').any(|w| w.trim() == "ALL");
+        let rest = rest.trim();
+        let tags_and_cmd: Vec<&str> = rest.split_whitespace().collect();
+        let full = tags_and_cmd.last() == Some(&"ALL");
+        if runas_all && full {
+            admin = true;
+            if tags_and_cmd.iter().any(|w| *w == "NOPASSWD:") {
+                silent = true;
+            }
+        }
+    }
+    let user = if admin { SessionUser::Administrator } else { SessionUser::Standard };
+    let proof = if silent { ProofPolicy::Meaningless } else { ProofPolicy::Meaningful };
+    (user, proof)
 }
 
 #[cfg(test)]
@@ -104,12 +156,54 @@ mod tests {
 
     #[test]
     fn every_refusal_has_its_own_message_and_log_word() {
-        let all = [Refusal::NoAdministrator, Refusal::NotAdministrator, Refusal::ProofMeaningless];
+        let all = [Refusal::NoAdministrator, Refusal::NotAdministrator, Refusal::ProofMeaningless, Refusal::ServiceUnavailable];
         for (i, a) in all.iter().enumerate() {
             for b in &all[i + 1..] {
                 assert_ne!(a.message(), b.message());
                 assert_ne!(a.log_word(), b.log_word());
             }
         }
+    }
+
+    const ADMIN: &str = "Matching Defaults entries for a on h:\n    secure_path=/usr/bin\n\nRunas and Command-specific defaults for a:\n    Defaults!/usr/bin/visudo env_keep+=\"EDITOR\"\n\nUser a may run the following commands on h:\n    (ALL : ALL) ALL\n";
+
+    #[test]
+    fn a_full_sudo_rule_with_a_password_is_an_administrator_with_a_meaningful_proof() {
+        assert_eq!(classify_sudo_list(ADMIN), (SessionUser::Administrator, ProofPolicy::Meaningful));
+        assert_eq!(
+            classify_sudo_list("User a may run the following commands on h:\n    (ALL) ALL\n"),
+            (SessionUser::Administrator, ProofPolicy::Meaningful)
+        );
+    }
+
+    #[test]
+    fn a_user_who_may_not_run_sudo_is_standard() {
+        assert_eq!(
+            classify_sudo_list("User s is not allowed to run sudo on h.\n").0,
+            SessionUser::Standard
+        );
+        assert_eq!(classify_sudo_list("").0, SessionUser::Standard);
+    }
+
+    #[test]
+    fn a_partial_rule_does_not_make_an_administrator() {
+        let one = "User a may run the following commands on h:\n    (ALL : ALL) /usr/bin/systemctl restart x\n    (root) ALL\n    (ALL) NOPASSWD: /usr/bin/ls\n";
+        assert_eq!(classify_sudo_list(one).0, SessionUser::Standard);
+    }
+
+    #[test]
+    fn a_full_rule_without_a_password_makes_the_proof_meaningless() {
+        let n = "User a may run the following commands on h:\n    (ALL : ALL) NOPASSWD: ALL\n";
+        assert_eq!(classify_sudo_list(n), (SessionUser::Administrator, ProofPolicy::Meaningless));
+        let both = "User a may run the following commands on h:\n    (ALL : ALL) ALL\n    (ALL) NOPASSWD: ALL\n";
+        assert_eq!(classify_sudo_list(both).1, ProofPolicy::Meaningless);
+    }
+
+    #[test]
+    fn sudo_set_not_to_authenticate_makes_the_proof_meaningless() {
+        let o = "Matching Defaults entries for a on h:\n    !authenticate\n\nUser a may run the following commands on h:\n    (ALL : ALL) ALL\n";
+        assert_eq!(classify_sudo_list(o).1, ProofPolicy::Meaningless);
+        let o2 = "Matching Defaults entries for a on h:\n    Defaults !authenticate\n\nUser a may run the following commands on h:\n    (ALL) ALL\n";
+        assert_eq!(classify_sudo_list(o2).1, ProofPolicy::Meaningless);
     }
 }

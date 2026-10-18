@@ -749,6 +749,18 @@ impl Connection {
                 Some(data) = rx_from_cm.recv() => {
                     match data {
                         ipc::Data::Authorize => {
+                            // The click alone no longer authorises: the administrator proves it through sudo.
+                            #[cfg(target_os = "linux")]
+                            if !super::approval_linux::request().await {
+                                super::connection_log::record(
+                                    conn.inner.id(),
+                                    "approval-denied",
+                                    &format!("{} from {}", conn.lr.my_id, conn.ip),
+                                );
+                                conn.send_close_reason_no_retry(super::approval::DECLINED).await;
+                                conn.on_close("approval was not given", true).await;
+                                break;
+                            }
                             conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
                             conn.require_2fa.take();
                             if !conn.send_logon_response_and_keep_alive().await {
@@ -2610,6 +2622,17 @@ impl Connection {
                 }
                 if let Some(f) = failure {
                     self.update_failure_with_scope(f, true, 0, FailureScope::Default);
+                }
+                // Only an administrator signed in here may be asked (docs/APPROVAL_SPEC.md); nobody else sees a request.
+                #[cfg(target_os = "linux")]
+                if let Err(refusal) = super::approval_linux::check().await {
+                    super::connection_log::record(
+                        self.inner.id(),
+                        "approval-refused",
+                        &format!("{} from {}: {}", self.lr.my_id, self.ip, refusal.log_word()),
+                    );
+                    self.send_login_error(refusal.message()).await;
+                    return true;
                 }
                 self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), false);
             }

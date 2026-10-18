@@ -142,7 +142,7 @@ pub fn is_service_ipc_postfix(postfix: &str) -> bool {
     // On Linux Wayland, input injection is implemented via uinput in the root service process.
     // The user `--server` process must be able to connect to these uinput IPC channels, so they
     // must share the same IPC parent directory as `_service`.
-    postfix == "_service" || postfix.starts_with("_uinput_")
+    postfix == "_service" || postfix == "_approval" || postfix.starts_with("_uinput_")
 }
 
 // Keep Linux/macOS IPC parent directory rules in one place to avoid drift between
