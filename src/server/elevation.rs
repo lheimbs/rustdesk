@@ -267,6 +267,56 @@ pub async fn create_in_service(conn_id: i32, serial: u64) -> Result<String, Stri
     }
 }
 
+/// APPROVAL_SPEC.md: ask the service whether an administrator is signed in at this session. No answer: refuse (fail closed).
+#[cfg(windows)]
+pub async fn approval_check() -> Result<(), super::approval::Refusal> {
+    use super::{approval::Refusal, elevation_grant::{ServiceReply, ServiceRequest}};
+    match call_service(ServiceRequest::ApprovalCheck).await {
+        Ok(ServiceReply::Done) => Ok(()),
+        Ok(ServiceReply::Denied(word)) => Err(Refusal::from_log_word(&word)),
+        _ => Err(Refusal::ServiceUnavailable),
+    }
+}
+
+/// The Accept click is not enough (APPROVAL_SPEC.md): the administrator answers the Windows (UAC) prompt, and the service
+/// confirms that proof. Uses the E7/E8 request, ended again at once: this approves the connection, it grants no tier 1.
+#[cfg(windows)]
+pub async fn approve_connection(conn_id: i32, serial: u64) -> bool {
+    use super::elevation_grant::ServiceReply;
+    let Ok(nonce) = create_in_service(conn_id, serial).await else {
+        return false;
+    };
+    let arg = format!("--elevation-proof {}", nonce);
+    let declined = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let declined_in_thread = declined.clone();
+    std::thread::spawn(move || {
+        // The call returns once the prompt is answered; "No" (or no prompt at all) is a refusal at once.
+        match crate::platform::elevate(&arg) {
+            Ok(true) => {}
+            Ok(false) => declined_in_thread.store(true, std::sync::atomic::Ordering::SeqCst),
+            Err(err) => {
+                hbb_common::log::warn!("approval: the UAC prompt could not be started: {}", err);
+                declined_in_thread.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(PROOF_SECS);
+    let mut granted = false;
+    while std::time::Instant::now() < deadline && !declined.load(std::sync::atomic::Ordering::SeqCst) {
+        match poll_service(nonce.clone()).await {
+            Some(ServiceReply::Granted { .. }) => {
+                granted = true;
+                break;
+            }
+            Some(ServiceReply::Waiting) | None => {}
+            Some(_) => break, // denied or gone
+        }
+        hbb_common::tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    withdraw_in_service(nonce, false);
+    granted
+}
+
 #[cfg(windows)]
 pub fn withdraw_in_service(nonce: String, keep_resume: bool) {
     use super::elevation_grant::ServiceRequest;

@@ -750,8 +750,19 @@ impl Connection {
                     match data {
                         ipc::Data::Authorize => {
                             // The click alone no longer authorises: the administrator proves it through sudo.
-                            #[cfg(target_os = "linux")]
-                            if !super::approval_linux::request().await {
+                            #[cfg(any(target_os = "linux", windows))]
+                            if !{
+                                #[cfg(target_os = "linux")]
+                                let ok = super::approval_linux::request().await;
+                                #[cfg(windows)]
+                                let ok = {
+                                    let serial = crate::controller_auth::verify_login(&conn.lr, &Config::get_id(), &conn.hash)
+                                        .map(|c| c.serial)
+                                        .unwrap_or(0);
+                                    super::elevation::approve_connection(conn.inner.id(), serial).await
+                                };
+                                ok
+                            } {
                                 super::connection_log::record(
                                     conn.inner.id(),
                                     "approval-denied",
@@ -2624,8 +2635,14 @@ impl Connection {
                     self.update_failure_with_scope(f, true, 0, FailureScope::Default);
                 }
                 // Only an administrator signed in here may be asked (docs/APPROVAL_SPEC.md); nobody else sees a request.
-                #[cfg(target_os = "linux")]
-                if let Err(refusal) = super::approval_linux::check().await {
+                #[cfg(any(target_os = "linux", windows))]
+                if let Err(refusal) = {
+                    #[cfg(target_os = "linux")]
+                    let r = super::approval_linux::check().await;
+                    #[cfg(windows)]
+                    let r = super::elevation::approval_check().await;
+                    r
+                } {
                     super::connection_log::record(
                         self.inner.id(),
                         "approval-refused",
