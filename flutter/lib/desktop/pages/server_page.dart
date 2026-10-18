@@ -537,7 +537,9 @@ class _CmHeaderState extends State<_CmHeader>
                           ? client.disconnected
                               ? translate("Disconnected")
                               : translate("Connected")
-                          : "${translate("Request access to your device")}...",
+                          : client.approving
+                              ? "${translate("Waiting for the administrator's confirmation")}..."
+                              : "${translate("Request access to your device")}...",
                       style: TextStyle(color: Colors.white),
                     ).marginOnly(right: 8.0),
                     if (client.authorized)
@@ -1152,7 +1154,7 @@ class _CmControlPanel extends StatelessWidget {
         bind.mainGetBuildinOption(
                 key: kOptionHideElevateButtonInAcceptWindow) !=
             'Y';
-    final showAccept = model.approveMode != 'password';
+    final showAccept = model.approveMode != 'password' && !client.approving;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [

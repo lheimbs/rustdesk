@@ -47,7 +47,7 @@ fn with_approvals<T>(f: impl FnOnce(&mut Approvals) -> T) -> T {
 
 // ---- service (root) ----
 
-fn user_name(uid: u32) -> Option<String> {
+pub(crate) fn user_name(uid: u32) -> Option<String> {
     use hbb_common::libc;
     let mut buf = vec![0u8; 4096];
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
@@ -185,7 +185,7 @@ pub async fn request() -> bool {
     }
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let cmd = format!("'{}' --approval-proof {}", exe.replace('\'', "'\\''"), nonce);
-    let mut dialog = tokio::task::spawn_blocking(move || crate::platform::gtk_sudo::run(vec![&cmd]).is_ok());
+    let mut dialog = tokio::task::spawn_blocking(move || crate::platform::gtk_sudo::run_as_self(vec![&cmd]).is_ok());
     let deadline = Instant::now() + PROOF_TTL;
     let mut done = false;
     let granted = loop {

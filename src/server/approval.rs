@@ -40,7 +40,8 @@ pub enum Approval {
 }
 
 pub const NO_ADMINISTRATOR: &str = "No administrator is signed in at this machine";
-pub const DECLINED: &str = "The administrator did not approve";
+// "not allowed" keeps the controller from retrying on its own (client::check_if_retry).
+pub const DECLINED: &str = "Not allowed: the administrator did not approve this connection";
 pub const NOT_ADMINISTRATOR: &str = "Only an administrator can allow this connection";
 pub const SERVICE_UNAVAILABLE: &str = "The approval service on this machine is not available";
 pub const PROOF_MEANINGLESS: &str =
@@ -162,6 +163,11 @@ mod tests {
             decide(SessionUser::Administrator, ProofPolicy::Meaningless),
             Approval::Refused(Refusal::ProofMeaningless)
         );
+    }
+
+    #[test]
+    fn a_declined_connection_is_not_retried_by_the_controller() {
+        assert!(!crate::client::check_if_retry("error", "Connection Error", DECLINED, false));
     }
 
     #[test]

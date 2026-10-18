@@ -806,5 +806,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Stop administrator access", "Administratorzugriff beenden"),
         ("elevation_keep_connected_tip", "Über eine Abmeldung hinweg verbunden bleiben (15 Min.); es kann dann am Anmeldebildschirm tippen."),
         ("The one-time password is shown to administrators only", "Das Einmalpasswort wird nur Administratoren angezeigt"),
+        ("Waiting for the administrator's confirmation", "Warten auf die Bestätigung des Administrators"),
     ].iter().cloned().collect();
 }

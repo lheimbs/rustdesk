@@ -537,6 +537,7 @@ class ServerModel with ChangeNotifier {
             return;
           }
           _clients[index].authorized = true;
+          _clients[index].approving = false;
           _clients[index].privacyMode = client.privacyMode;
         }
       } else {
@@ -681,7 +682,11 @@ class ServerModel with ChangeNotifier {
         parent.target?.invokeMethod("start_capture");
       }
       parent.target?.invokeMethod("cancel_notification", client.id);
-      client.authorized = true;
+      if (isWindows || isLinux) {
+        client.approving = true;
+      } else {
+        client.authorized = true;
+      }
       notifyListeners();
     } else {
       bind.cmLoginRes(connId: client.id, res: res);
@@ -840,6 +845,8 @@ enum ClientType {
 class Client {
   int id = 0; // client connections inner count id
   bool authorized = false;
+  // The click was given; the administrator's confirmation is still pending (docs/APPROVAL_SPEC.md).
+  bool approving = false;
   bool isFileTransfer = false;
   bool isViewCamera = false;
   bool isTerminal = false;

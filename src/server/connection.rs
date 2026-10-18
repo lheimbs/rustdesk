@@ -731,6 +731,9 @@ impl Connection {
             (_tx_clip, rx_clip) = mpsc::unbounded_channel::<i32>();
         }
 
+        let (tx_approval, mut rx_approval) = mpsc::unbounded_channel::<bool>();
+        let mut approving = false;
+
         loop {
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
@@ -746,39 +749,67 @@ impl Connection {
                     conn.on_close("Timeout", true).await;
                     break;
                 }
+                Some(approved) = rx_approval.recv() => {
+                    approving = false;
+                    if !approved {
+                        super::connection_log::record(
+                            conn.inner.id(),
+                            "approval-denied",
+                            &format!("{} from {}", conn.lr.my_id, conn.ip),
+                        );
+                        conn.send_close_reason_no_retry(super::approval::DECLINED).await;
+                        conn.on_close("approval was not given", true).await;
+                        break;
+                    }
+                    conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                    conn.require_2fa.take();
+                    if !conn.send_logon_response_and_keep_alive().await {
+                        break;
+                    }
+                    // the connection manager shows "connected" only now
+                    conn.try_start_cm(conn.lr.my_id.clone(), conn.lr.my_name.clone(), true);
+                    if conn.port_forward_socket.is_some() {
+                        break;
+                    }
+                }
                 Some(data) = rx_from_cm.recv() => {
                     match data {
                         ipc::Data::Authorize => {
-                            // The click alone no longer authorises: the administrator proves it through sudo.
+                            // The click alone no longer authorises: the administrator proves it, beside this loop
+                            // (the result arrives on `rx_approval`).
                             #[cfg(any(target_os = "linux", windows))]
-                            if !{
-                                #[cfg(target_os = "linux")]
-                                let ok = super::approval_linux::request().await;
-                                #[cfg(windows)]
-                                let ok = {
-                                    let serial = crate::controller_auth::verify_login(&conn.lr, &Config::get_id(), &conn.hash)
-                                        .map(|c| c.serial)
-                                        .unwrap_or(0);
-                                    super::elevation::approve_connection(conn.inner.id(), serial).await
-                                };
-                                ok
-                            } {
-                                super::connection_log::record(
-                                    conn.inner.id(),
-                                    "approval-denied",
-                                    &format!("{} from {}", conn.lr.my_id, conn.ip),
-                                );
-                                conn.send_close_reason_no_retry(super::approval::DECLINED).await;
-                                conn.on_close("approval was not given", true).await;
-                                break;
+                            {
+                                if !approving {
+                                    approving = true;
+                                    let tx = tx_approval.clone();
+                                    #[cfg(target_os = "linux")]
+                                    tokio::spawn(async move {
+                                        tx.send(super::approval_linux::request().await).ok();
+                                    });
+                                    #[cfg(windows)]
+                                    {
+                                        let serial =
+                                            crate::controller_auth::verify_login(&conn.lr, &Config::get_id(), &conn.hash)
+                                                .map(|c| c.serial)
+                                                .unwrap_or(0);
+                                        let id = conn.inner.id();
+                                        tokio::spawn(async move {
+                                            tx.send(super::elevation::approve_connection(id, serial).await).ok();
+                                        });
+                                    }
+                                }
+                                continue;
                             }
-                            conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
-                            conn.require_2fa.take();
-                            if !conn.send_logon_response_and_keep_alive().await {
-                                break;
-                            }
-                            if conn.port_forward_socket.is_some() {
-                                break;
+                            #[cfg(not(any(target_os = "linux", windows)))]
+                            {
+                                conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                                conn.require_2fa.take();
+                                if !conn.send_logon_response_and_keep_alive().await {
+                                    break;
+                                }
+                                if conn.port_forward_socket.is_some() {
+                                    break;
+                                }
                             }
                         }
                         ipc::Data::Close => {
