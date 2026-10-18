@@ -163,6 +163,10 @@ pub fn refresh_options() {
 #[inline]
 pub fn get_option<T: AsRef<str>>(key: T) -> String {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    if key.as_ref() == "approver" {
+        return if crate::server::approval_ui::is_approver() { "Y" } else { "N" }.to_owned();
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let map = OPTIONS.lock().unwrap();
         if let Some(v) = map.get(key.as_ref()) {

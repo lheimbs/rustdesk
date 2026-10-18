@@ -289,6 +289,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     // Handover (#36): the one-time password is always the one that counts.
     final showOneTime = true;
+    if (bind.mainGetOptionSync(key: 'approver') == 'N') {
+      return Container(
+        margin: EdgeInsets.only(left: 20.0, right: 16, top: 13, bottom: 13),
+        child: Text(translate('The one-time password is shown to administrators only'),
+            style: TextStyle(color: textColor?.withOpacity(0.7))),
+      );
+    }
     return Container(
       margin: EdgeInsets.only(left: 20.0, right: 16, top: 13, bottom: 13),
       child: Row(
