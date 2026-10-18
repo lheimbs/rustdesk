@@ -57,6 +57,16 @@ impl Refusal {
         }
     }
 
+    /// The inverse of `log_word` (the service tells the server why in this word).
+    pub fn from_log_word(word: &str) -> Refusal {
+        match word {
+            "no-administrator" => Refusal::NoAdministrator,
+            "not-administrator" => Refusal::NotAdministrator,
+            "proof-meaningless" => Refusal::ProofMeaningless,
+            _ => Refusal::ServiceUnavailable,
+        }
+    }
+
     /// The word recorded in the connection log.
     pub fn log_word(self) -> &'static str {
         match self {
@@ -152,6 +162,14 @@ mod tests {
             decide(SessionUser::Administrator, ProofPolicy::Meaningless),
             Approval::Refused(Refusal::ProofMeaningless)
         );
+    }
+
+    #[test]
+    fn a_refusal_survives_the_trip_as_its_log_word() {
+        for r in [Refusal::NoAdministrator, Refusal::NotAdministrator, Refusal::ProofMeaningless, Refusal::ServiceUnavailable] {
+            assert_eq!(Refusal::from_log_word(r.log_word()), r);
+        }
+        assert_eq!(Refusal::from_log_word("garbage"), Refusal::ServiceUnavailable);
     }
 
     #[test]

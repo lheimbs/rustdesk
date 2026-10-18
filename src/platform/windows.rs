@@ -922,6 +922,21 @@ fn serve_elevation_request(
             );
             reply
         }
+        ServiceRequest::ApprovalCheck if from_server => {
+            use crate::server::approval::{decide, Approval, ProofPolicy, SessionUser};
+            let user = if get_session_username(session_id).is_empty() {
+                SessionUser::Nobody
+            } else if session_user_is_admin(session_id) {
+                SessionUser::Administrator
+            } else {
+                SessionUser::Standard
+            };
+            let proof = if uac_allows_elevation() { ProofPolicy::Meaningful } else { ProofPolicy::Meaningless };
+            match decide(user, proof) {
+                Approval::Approver => ServiceReply::Done,
+                Approval::Refused(r) => ServiceReply::Denied(r.log_word().to_owned()),
+            }
+        }
         ServiceRequest::Cancel { nonce } if from_server => requests.cancel(&nonce),
         ServiceRequest::StartHelper { nonce, shmem_name } if from_server => {
             if !requests.is_granted_to(&nonce, Instant::now()) {
@@ -1030,6 +1045,29 @@ fn session_user_sid(session_id: u32) -> Option<String> {
     let sid = acl::token_user_sid_string(windows::Win32::Foundation::HANDLE(token as _)).ok();
     unsafe { CloseHandle(token) };
     sid
+}
+
+/// APPROVAL_SPEC.md: is the user signed in to the session an administrator? The session's user token is a UAC split token
+/// (limited, with a linked administrator token) for an administrator and a plain token for a standard user.
+fn session_user_is_admin(session_id: u32) -> bool {
+    let token = get_user_token(session_id, true);
+    if token.is_null() {
+        return false;
+    }
+    let mut kind: u32 = 0;
+    let mut size: DWORD = 0;
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            winapi::um::winnt::TokenElevationType,
+            &mut kind as *mut _ as *mut c_void,
+            mem::size_of::<u32>() as _,
+            &mut size,
+        )
+    } != FALSE;
+    unsafe { CloseHandle(token) };
+    // TokenElevationTypeFull = 2, TokenElevationTypeLimited = 3
+    ok && (kind == 2 || kind == 3)
 }
 
 /// No helper without a grant (E9): when the grant is gone or the helper exited, end and forget it.

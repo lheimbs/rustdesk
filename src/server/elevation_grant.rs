@@ -35,6 +35,9 @@ pub enum ServiceRequest {
     ResumeCheck { id: Vec<u8>, mac: Vec<u8>, challenge: String, peer_id: String, serial: u64 },
     /// From the user-level server: start the privileged helper (E9) for this grant on its shared memory.
     StartHelper { nonce: String, shmem_name: String },
+    /// From the user-level server (APPROVAL_SPEC.md): is an administrator signed in at this session and would the UAC prompt mean
+    /// something? `Done`, or `Denied(<`Refusal::log_word`>)`.
+    ApprovalCheck,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
