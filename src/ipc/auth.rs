@@ -732,8 +732,54 @@ where
     }
 }
 
+/// Handover (#68): the connection manager's pipe name carries the session, so another session's user cannot take it first.
+#[cfg(windows)]
+pub(crate) fn windows_session_scoped_postfix(postfix: &str) -> String {
+    match crate::platform::windows::get_current_process_session_id() {
+        Some(session) if postfix == "_cm" => format!("{postfix}-{session}"),
+        _ => postfix.to_owned(),
+    }
+}
+
 #[cfg(windows)]
 impl ConnectionTmpl<parity_tokio_ipc::ConnectionClient> {
+    /// Handover: who answers matters on these pipes, and any process can create an instance of a pipe name. `_service`
+    /// must be the SYSTEM service of this program (#67); `_cm` this program in this session, run by this user or by SYSTEM
+    /// (#68). Fail closed.
+    pub(crate) fn verify_windows_pipe_server(&self, postfix: &str) -> ResultType<()> {
+        use crate::platform::windows as win;
+        let is_service = postfix == crate::POSTFIX_SERVICE;
+        if !is_service && postfix != "_cm" {
+            return Ok(());
+        }
+        let pid = self
+            .server_pid()
+            .ok_or_else(|| anyhow::anyhow!("ipc{}: the pipe server is unknown", postfix))?;
+        if is_service {
+            // The service control manager knows the service's process; a user cannot register one. (A standard user may
+            // not open a SYSTEM token, so this is the check that works for everyone.)
+            let service = win::service_process_id();
+            if service != Some(pid) {
+                bail!("ipc{}: served by pid {}, not by the service (pid {:?})", postfix, pid, service);
+            }
+            return Ok(());
+        }
+        ensure_peer_executable_matches_current_by_pid(pid, postfix)?;
+        let system = win::is_process_running_as_system(pid).unwrap_or(false);
+        let session = win::get_current_process_session_id();
+        if session.is_none() || win::get_session_id_of_process(pid) != session {
+            bail!("ipc{}: served by pid {} from another session", postfix, pid);
+        }
+        if system || win::is_process_running_as_system(std::process::id()).unwrap_or(false) {
+            return Ok(());
+        }
+        let theirs = win::process_account(pid)?;
+        if theirs != win::process_account(std::process::id())? {
+            bail!("ipc{}: served by pid {} of another account ({})", postfix, pid, theirs);
+        }
+        Ok(())
+    }
+
     /// The process that created the pipe this client is connected to.
     pub(crate) fn server_pid(&self) -> Option<u32> {
         let pipe_handle = self.inner.get_ref().as_raw_handle();
