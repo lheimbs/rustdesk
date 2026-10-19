@@ -1503,7 +1503,13 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
             return connect_with_path(ms_timeout, &path).await;
         }
         let path = Config::ipc_path(postfix);
-        return connect_with_path(ms_timeout, &path).await;
+        let conn = connect_with_path(ms_timeout, &path).await?;
+        #[cfg(target_os = "linux")]
+        if config::is_service_ipc_postfix(postfix) && conn.peer_uid() != Some(0) {
+            // Only the root service may answer here (approval, config sync, uinput): anyone can create the directory first.
+            bail!("ipc{} is not served by root (uid {:?})", postfix, conn.peer_uid());
+        }
+        return Ok(conn);
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
@@ -1632,6 +1638,10 @@ where
         let v = serde_json::to_vec(data)?;
         self.inner.send(bytes::Bytes::from(v)).await?;
         Ok(())
+    }
+
+    pub fn set_max_packet_length(&mut self, n: usize) {
+        self.inner.codec_mut().set_max_packet_length(n);
     }
 
     async fn send_config(&mut self, name: &str, value: String) -> ResultType<()> {

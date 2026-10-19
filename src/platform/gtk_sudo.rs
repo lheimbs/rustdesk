@@ -63,6 +63,8 @@ pub fn spawn_as_self(cmds: Vec<&str>) -> ResultType<std::process::Child> {
     Ok(crate::run_me(args)?)
 }
 
+static IGNORE_CACHED_CREDENTIALS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn exec() {
     let mut args = vec![];
     for arg in std::env::args().skip(3) {
@@ -70,6 +72,8 @@ pub fn exec() {
     }
     let cmd_mode = std::env::args().nth(2) == Some("cmd".to_string());
     let own = std::env::args().nth(2) == Some("gui-self".to_string());
+    // the approval proof is the password typed now: never a sudo ticket cached earlier
+    IGNORE_CACHED_CREDENTIALS.store(own, std::sync::atomic::Ordering::SeqCst);
     if cmd_mode {
         cmd(args);
     } else {
@@ -169,7 +173,7 @@ fn ui(args: Vec<String>, own: bool) {
     std::thread::spawn(move || {
         let acitve_user = session_user();
         let mut initial_password = None;
-        if acitve_user != "root" {
+        if own || acitve_user != "root" {
             if let Err(e) = tx_to_ui_clone.send(Message::PasswordPrompt(("".to_string(), !own))) {
                 log::error!("Channel error: {e:?}");
                 std::process::exit(EXIT_CODE);
@@ -482,6 +486,9 @@ fn child(su_user: Option<String>, args: Vec<String>) -> ResultType<()> {
     let os = std::env::consts::OS;
     let bsd = os == "freebsd" || os == "dragonfly" || os == "netbsd" || os == "openbsd";
     let mut params = vec!["sudo".to_string()];
+    if IGNORE_CACHED_CREDENTIALS.load(std::sync::atomic::Ordering::SeqCst) {
+        params.push("-k".to_string());
+    }
     if su_user.is_some() {
         params.push("-S".to_string());
     }

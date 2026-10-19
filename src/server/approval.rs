@@ -89,29 +89,22 @@ pub fn decide(user: SessionUser, proof: ProofPolicy) -> Approval {
 }
 
 /// Linux: read what `sudo -l -U <user>` (run by root) says about a user.
-/// Administrator = a rule that lets the user run ALL commands as ALL users; the proof is meaningless when that rule needs no
-/// password (`NOPASSWD:`) or when sudo is configured not to authenticate (`!authenticate`), because a program of the user
-/// could then pass it silently.
+/// Administrator = a rule that lets the user run ALL commands as ALL users; the proof is meaningless when any rule needs no
+/// password (`NOPASSWD:`, also for single commands: many of them lead to a root shell) or when sudo is configured not to
+/// authenticate (`!authenticate` in any defaults block), because a program of the user could then pass it silently.
 pub fn classify_sudo_list(output: &str) -> (SessionUser, ProofPolicy) {
     let mut admin = false;
     let mut silent = false;
     let mut in_rules = false;
-    let mut in_defaults = false;
     for line in output.lines() {
         let t = line.trim();
         if t.contains("may run the following commands") {
             in_rules = true;
             continue;
         }
-        if t.starts_with("Matching Defaults entries") {
-            in_defaults = true;
-            continue;
-        }
-        if t.is_empty() {
-            in_defaults = false;
-        }
-        // Only the global block counts; the command-specific one ("Runas and Command-specific defaults") does not.
-        if in_defaults && t.split(|c: char| c == ',' || c.is_whitespace()).any(|w| w == "!authenticate") {
+        // Fail closed: wherever it appears (any defaults block, any rule, a continuation line), it is a route to root without
+        // a password.
+        if t.split(|c: char| c == ',' || c.is_whitespace()).any(|w| w == "!authenticate" || w.contains("NOPASSWD:")) {
             silent = true;
         }
         if !in_rules || !t.starts_with('(') {
@@ -124,14 +117,19 @@ pub fn classify_sudo_list(output: &str) -> (SessionUser, ProofPolicy) {
         let full = tags_and_cmd.last() == Some(&"ALL");
         if runas_all && full {
             admin = true;
-            if tags_and_cmd.iter().any(|w| *w == "NOPASSWD:") {
-                silent = true;
-            }
         }
     }
     let user = if admin { SessionUser::Administrator } else { SessionUser::Standard };
     let proof = if silent { ProofPolicy::Meaningless } else { ProofPolicy::Meaningful };
     (user, proof)
+}
+
+/// `UID_MIN` from /etc/login.defs.
+pub fn login_defs_uid_min(text: &str) -> Option<u32> {
+    text.lines().find_map(|l| {
+        let mut w = l.split_whitespace();
+        (w.next() == Some("UID_MIN")).then(|| w.next()?.parse().ok()).flatten()
+    })
 }
 
 #[cfg(test)]
@@ -221,6 +219,28 @@ mod tests {
         assert_eq!(classify_sudo_list(n), (SessionUser::Administrator, ProofPolicy::Meaningless));
         let both = "User a may run the following commands on h:\n    (ALL : ALL) ALL\n    (ALL) NOPASSWD: ALL\n";
         assert_eq!(classify_sudo_list(both).1, ProofPolicy::Meaningless);
+    }
+
+    #[test]
+    fn any_passwordless_route_to_root_makes_the_proof_meaningless() {
+        for rules in [
+            "    (ALL : ALL) ALL\n    (root) NOPASSWD: ALL\n",
+            "    (ALL : ALL) ALL\n    (root) NOPASSWD: /usr/bin/vim\n",
+            "    (ALL : ALL) ALL\n    (root) /usr/bin/ls,\n        NOPASSWD: /bin/sh\n",
+        ] {
+            let o = format!("User a may run the following commands on h:\n{}", rules);
+            assert_eq!(classify_sudo_list(&o), (SessionUser::Administrator, ProofPolicy::Meaningless), "{}", rules);
+        }
+        let runas = "Runas and Command-specific defaults for a:\n    Defaults>root !authenticate\n\nUser a may run the following commands on h:\n    (ALL : ALL) ALL\n";
+        assert_eq!(classify_sudo_list(runas).1, ProofPolicy::Meaningless);
+        let cmd = "Runas and Command-specific defaults for a:\n    Defaults!/usr/bin/vi !authenticate\n\nUser a may run the following commands on h:\n    (ALL : ALL) ALL\n";
+        assert_eq!(classify_sudo_list(cmd).1, ProofPolicy::Meaningless);
+    }
+
+    #[test]
+    fn uid_min_comes_from_login_defs() {
+        assert_eq!(login_defs_uid_min("# c\nUID_MIN\t\t\t 500\nUID_MAX 60000\n"), Some(500));
+        assert_eq!(login_defs_uid_min("UID_MAX 60000\n"), None);
     }
 
     #[test]
