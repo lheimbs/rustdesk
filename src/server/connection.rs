@@ -372,6 +372,8 @@ pub struct Connection {
     awaiting_2fa: bool,
     /// The approval card is up for this login (password and approver check passed): only now may Accept start the proof.
     awaiting_click: bool,
+    /// `Stream::session_binding`: what the controller's login proof must cover (#72).
+    session_binding: Vec<u8>,
     keyboard: bool,
     clipboard: bool,
     audio: bool,
@@ -563,6 +565,7 @@ impl Connection {
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
+        let session_binding = stream.session_binding().await;
         let mut conn = Self {
             inner: ConnInner {
                 id,
@@ -572,6 +575,7 @@ impl Connection {
             require_2fa: crate::auth_2fa::get_2fa(None),
             awaiting_2fa: false,
             awaiting_click: false,
+            session_binding,
             // Defer display enumeration until login succeeds. Monitor login replaces this
             // with the primary index returned with the refreshed display snapshot.
             display_idx: 0,
@@ -806,7 +810,7 @@ impl Connection {
                                     #[cfg(windows)]
                                     {
                                         let serial =
-                                            crate::controller_auth::verify_login(&conn.lr, &Config::get_id(), &conn.hash)
+                                            crate::controller_auth::verify_login(&conn.lr, &Config::get_id(), &conn.hash, &conn.session_binding)
                                                 .map(|c| c.serial)
                                                 .unwrap_or(0);
                                         let id = conn.inner.id();
@@ -2632,7 +2636,7 @@ impl Connection {
     /// authorises. A wrong or missing password never reaches the connection manager.
     async fn password_then_click(&mut self) -> bool {
         use super::login_gate::{decide, Gate};
-        let controller = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash);
+        let controller = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash, &self.session_binding);
         #[cfg(windows)]
         if let Ok(c) = &controller {
             // Only the screen: file transfer, tunnels or a camera through the SYSTEM sign-in server would reach
@@ -4771,7 +4775,7 @@ impl Connection {
         let actions = match check_request(self.keyboard, self.elevation.busy(), uac_ok) {
             Err(why) => vec![Action::Controller(status(State::Denied, why))],
             Ok(()) => {
-                let serial = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash)
+                let serial = crate::controller_auth::verify_login(&self.lr, &Config::get_id(), &self.hash, &self.session_binding)
                     .map(|c| c.serial);
                 let created = match serial {
                     Ok(serial) => create_in_service(self.inner.id(), serial).await,

@@ -10,6 +10,9 @@ message IdPk {
   string dtls_fingerprint = 3;
   // Newest key exchange version the signer speaks; absent, i.e. 0, is the original scheme.
   uint32 kx_version = 4;
+  // Handover: when the machine signed it (unix seconds); a controller refuses an old one, so a signature taken once
+  // (e.g. from the sign broker) does not serve as the machine's identity for ever.
+  uint64 signed_at = 20;
 }
 
 message RegisterPeer {
@@ -226,6 +229,7 @@ message PeerDiscovery {
 message OnlineRequest {
   string id = 1;
   repeated string peers = 2;
+  string licence_key = 20; // Handover: admission token
 }
 
 message OnlineResponse {

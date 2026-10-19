@@ -41,6 +41,11 @@ pub struct WsFramedStream {
 }
 
 impl WsFramedStream {
+    /// Handover (#72): see `Stream::session_binding`.
+    pub fn key_material(&self) -> Vec<Vec<u8>> {
+        self.encrypt.as_ref().map(Encrypt::key_material).unwrap_or_default()
+    }
+
     #[inline]
     fn get_connector(
         tls_type: &TlsType,

@@ -1,0 +1,12 @@
+diff --git a/protos/rendezvous.proto b/protos/rendezvous.proto
+index a57919f..7bf1bae 100644
+--- a/protos/rendezvous.proto
++++ b/protos/rendezvous.proto
+@@ -207,6 +207,7 @@ message PeerDiscovery {
+ message OnlineRequest {
+   string id = 1;
+   repeated string peers = 2;
++  string licence_key = 20; // Handover: admission token
+ }
+ 
+ message OnlineResponse {

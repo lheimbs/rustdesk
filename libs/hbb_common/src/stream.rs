@@ -217,6 +217,35 @@ impl Stream {
     /// Returns None for non-WebRTC transports, which authenticate via the secretbox key exchange.
     #[inline]
     #[cfg_attr(not(feature = "webrtc"), allow(unused_variables))]
+    /// Handover (#72): a value both ends of this session compute alike, and that a man in the middle, who runs one session
+    /// with each end, cannot make equal on both: a digest of the session keys, on WebRTC of both DTLS fingerprints. Empty
+    /// when the stream has neither.
+    pub async fn session_binding(&self) -> Vec<u8> {
+        use sodiumoxide::crypto::generichash;
+        let mut parts = match self {
+            #[cfg(feature = "webrtc")]
+            Stream::WebRTC(_) => vec![
+                self.dtls_fingerprint(true).await.unwrap_or_default().into_bytes(),
+                self.dtls_fingerprint(false).await.unwrap_or_default().into_bytes(),
+            ],
+            Stream::WebSocket(s) => s.key_material(),
+            Stream::Tcp(s) => s.key_material(),
+        };
+        if parts.iter().all(|p| p.is_empty()) {
+            return vec![];
+        }
+        parts.sort();
+        let Ok(mut h) = generichash::State::new(Some(32), None) else {
+            return vec![];
+        };
+        let _ = h.update(b"handover-session-binding");
+        for p in parts {
+            let _ = h.update(&(p.len() as u32).to_le_bytes());
+            let _ = h.update(&p);
+        }
+        h.finalize().map(|d| d.as_ref().to_vec()).unwrap_or_default()
+    }
+
     pub async fn dtls_fingerprint(&self, local: bool) -> Option<String> {
         match self {
             #[cfg(feature = "webrtc")]

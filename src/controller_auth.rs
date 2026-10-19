@@ -24,9 +24,13 @@ fn now_secs() -> u64 {
 }
 
 /// What the controller signs: the id it is connecting to and the two values the controlled side
-/// chose for this very connection, so a captured proof is useless on any other connection.
-fn login_context(controlled_id: &str, hash: &Hash) -> Vec<u8> {
-    format!("{}\n{}\n{}", controlled_id, hash.salt, hash.challenge).into_bytes()
+/// chose for this very connection, so a captured proof is useless on any other connection; and the
+/// session binding (`Stream::session_binding`), so a man in the middle cannot pass it on to the real
+/// machine over his own session with it (#72).
+fn login_context(controlled_id: &str, hash: &Hash, session: &[u8]) -> Vec<u8> {
+    let mut context = format!("{}\n{}\n{}\n", controlled_id, hash.salt, hash.challenge).into_bytes();
+    context.extend_from_slice(session);
+    context
 }
 
 pub fn credential_path() -> PathBuf {
@@ -34,7 +38,7 @@ pub fn credential_path() -> PathBuf {
 }
 
 /// Controller side: add the credential and the proof for this connection to the login request.
-pub fn attach(lr: &mut LoginRequest, hash: &Hash) {
+pub fn attach(lr: &mut LoginRequest, hash: &Hash, session: &[u8]) {
     if cfg!(feature = "lite") {
         return;
     }
@@ -47,7 +51,7 @@ pub fn attach(lr: &mut LoginRequest, hash: &Hash) {
         log::warn!("the controller credential at {} is unreadable", path.display());
         return;
     };
-    let proof = cred::prove(&file.secret_key(), PROOF_DOMAIN, &login_context(&lr.username, hash));
+    let proof = cred::prove(&file.secret_key(), PROOF_DOMAIN, &login_context(&lr.username, hash, session));
     lr.controller_cred = file.credential.into();
     lr.controller_proof = proof.into();
 }
@@ -57,18 +61,19 @@ fn verify_login_with(
     lr: &LoginRequest,
     controlled_id: &str,
     hash: &Hash,
+    session: &[u8],
     now: u64,
 ) -> Result<Credential, Error> {
     let c = cred::verify_with_leeway(&lr.controller_cred, issuer, now, CLOCK_LEEWAY)?;
     c.expect_role(Role::Controller)?;
-    cred::check_proof(&c, PROOF_DOMAIN, &login_context(controlled_id, hash), &lr.controller_proof)?;
+    cred::check_proof(&c, PROOF_DOMAIN, &login_context(controlled_id, hash, session), &lr.controller_proof)?;
     Ok(c)
 }
 
 /// Controlled side: is this login from a controller the owner signed? With no issuer key baked in, nobody is.
-pub fn verify_login(lr: &LoginRequest, controlled_id: &str, hash: &Hash) -> Result<Credential, Error> {
+pub fn verify_login(lr: &LoginRequest, controlled_id: &str, hash: &Hash, session: &[u8]) -> Result<Credential, Error> {
     let issuer = cred::decode_public_key(CONTROLLER_CA).ok_or(Error::BadSignature)?;
-    verify_login_with(&issuer, lr, controlled_id, hash, now_secs())
+    verify_login_with(&issuer, lr, controlled_id, hash, session, now_secs())
 }
 
 #[cfg(test)]
@@ -90,9 +95,11 @@ mod tests {
         (ipk, isk, HolderFile { credential, seed })
     }
 
+    const SESSION: &[u8] = b"session-binding";
+
     fn login(file: &HolderFile, id: &str, hash: &Hash) -> LoginRequest {
         let mut lr = LoginRequest { username: id.to_owned(), ..Default::default() };
-        let proof = cred::prove(&file.secret_key(), PROOF_DOMAIN, &login_context(id, hash));
+        let proof = cred::prove(&file.secret_key(), PROOF_DOMAIN, &login_context(id, hash, SESSION));
         lr.controller_cred = file.credential.clone().into();
         lr.controller_proof = proof.into();
         lr
@@ -108,41 +115,48 @@ mod tests {
     #[test]
     fn a_signed_controller_is_accepted_for_the_connection_it_signed() {
         let s = setup(Role::Controller);
-        assert!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, now_secs()).is_ok());
+        assert!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, SESSION, now_secs()).is_ok());
     }
 
     #[test]
     fn a_login_without_a_credential_is_refused() {
         let s = setup(Role::Controller);
         let bare = LoginRequest { username: "123456789".into(), ..Default::default() };
-        assert!(verify_login_with(&s.issuer, &bare, "123456789", &s.hash, now_secs()).is_err());
+        assert!(verify_login_with(&s.issuer, &bare, "123456789", &s.hash, SESSION, now_secs()).is_err());
     }
 
     #[test]
     fn a_proof_does_not_work_on_another_connection_or_another_machine() {
         let s = setup(Role::Controller);
         let other_conn = Hash { challenge: "challenge-2".into(), ..s.hash.clone() };
-        assert_eq!(verify_login_with(&s.issuer, &s.lr, "123456789", &other_conn, now_secs()), Err(Error::BadProof));
-        assert_eq!(verify_login_with(&s.issuer, &s.lr, "987654321", &s.hash, now_secs()), Err(Error::BadProof));
+        assert_eq!(verify_login_with(&s.issuer, &s.lr, "123456789", &other_conn, SESSION, now_secs()), Err(Error::BadProof));
+        assert_eq!(verify_login_with(&s.issuer, &s.lr, "987654321", &s.hash, SESSION, now_secs()), Err(Error::BadProof));
+    }
+
+    #[test]
+    fn a_proof_made_over_another_session_is_refused() {
+        // a man in the middle runs one session with each end: their bindings differ
+        let s = setup(Role::Controller);
+        assert_eq!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, b"other session", now_secs()), Err(Error::BadProof));
     }
 
     #[test]
     fn a_credential_from_another_issuer_is_refused() {
         let s = setup(Role::Controller);
         let (other, _) = new_issuer();
-        assert!(verify_login_with(&other, &s.lr, "123456789", &s.hash, now_secs()).is_err());
+        assert!(verify_login_with(&other, &s.lr, "123456789", &s.hash, SESSION, now_secs()).is_err());
     }
 
     #[test]
     fn a_device_credential_cannot_log_in_as_a_controller() {
         let s = setup(Role::Device);
-        assert_eq!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, now_secs()), Err(Error::WrongRole));
+        assert_eq!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, SESSION, now_secs()), Err(Error::WrongRole));
     }
 
     #[test]
     fn an_expired_credential_is_refused_beyond_the_clock_leeway() {
         let s = setup(Role::Controller);
-        assert!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, now_secs() + 1000 + CLOCK_LEEWAY + 5).is_err());
+        assert!(verify_login_with(&s.issuer, &s.lr, "123456789", &s.hash, SESSION, now_secs() + 1000 + CLOCK_LEEWAY + 5).is_err());
     }
 
     #[test]
@@ -151,7 +165,7 @@ mod tests {
         let (other_seed, _) = new_holder();
         let thief = HolderFile { credential: s.lr.controller_cred.to_vec(), seed: other_seed };
         let lr = login(&thief, "123456789", &s.hash);
-        assert_eq!(verify_login_with(&s.issuer, &lr, "123456789", &s.hash, now_secs()), Err(Error::BadProof));
+        assert_eq!(verify_login_with(&s.issuer, &lr, "123456789", &s.hash, SESSION, now_secs()), Err(Error::BadProof));
     }
 
     #[test]
@@ -159,7 +173,7 @@ mod tests {
         // the unit-test build has no HANDOVER_CONTROLLER_CA unless the environment sets one
         if CONTROLLER_CA.is_empty() {
             let s = setup(Role::Controller);
-            assert!(verify_login(&s.lr, "123456789", &s.hash).is_err());
+            assert!(verify_login(&s.lr, "123456789", &s.hash, SESSION).is_err());
         }
     }
 }

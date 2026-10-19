@@ -115,7 +115,19 @@ pub(crate) fn new_socket(addr: std::net::SocketAddr, reuse: bool) -> Result<TcpS
     Ok(socket)
 }
 
+impl Encrypt {
+    /// Handover (#72): the session's keys, both directions, for `Stream::session_binding`.
+    pub fn key_material(&self) -> Vec<Vec<u8>> {
+        vec![self.0 .0.to_vec(), self.3.as_ref().unwrap_or(&self.0).0.to_vec()]
+    }
+}
+
 impl FramedStream {
+    /// Handover (#72): see `Stream::session_binding`.
+    pub fn key_material(&self) -> Vec<Vec<u8>> {
+        self.2.as_ref().map(Encrypt::key_material).unwrap_or_default()
+    }
+
     pub async fn new<T: ToSocketAddrs + std::fmt::Display>(
         remote_addr: T,
         local_addr: Option<SocketAddr>,
