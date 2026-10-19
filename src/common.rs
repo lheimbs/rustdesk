@@ -981,12 +981,9 @@ pub fn increase_port<T: std::string::ToString>(host: T, offset: i32) -> String {
     hbb_common::socket_client::increase_port(host, offset)
 }
 
-/// Handover (#69, #82): a relay address in a rendezvous message is never dialled, it could point anywhere. The relay is the
-/// configured one or the rendezvous server's next port; an empty one stays empty (no relay offered).
-pub fn trusted_relay_server(rendezvous_server: &str, provided: &str) -> String {
-    if provided.is_empty() {
-        return String::new();
-    }
+/// Handover (#69, #82): a relay address in a rendezvous message is never dialled, it could point anywhere (and hbbs may send
+/// none at all). The relay is the configured one or the rendezvous server's next port, as on the controlled side.
+pub fn trusted_relay_server(rendezvous_server: &str) -> String {
     let configured = Config::get_option("relay-server");
     if !configured.is_empty() {
         return configured;
@@ -2118,8 +2115,7 @@ mod tests {
 
     #[test]
     fn a_relay_named_in_a_rendezvous_message_is_not_dialled() {
-        assert_eq!(super::trusted_relay_server("rs.example:21116", "evil.example:443"), "rs.example:21117");
-        assert_eq!(super::trusted_relay_server("rs.example:21116", ""), "");
+        assert_eq!(super::trusted_relay_server("rs.example:21116"), "rs.example:21117");
     }
 
     #[test]

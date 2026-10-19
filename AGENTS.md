@@ -136,6 +136,9 @@ controlled side (`ad6184e0f`); `id@host` and direct dialling (`ad6184e0f`); peer
 direct server (`73a9e3703`); the pinned peer key was never persisted (`6d10ca551`); peer clipboard defaults (`3c598ec29`, `c030b3f2b`);
 no record of who connected (`8d2e48606`).
 Later findings: the egress analyzer ignored UDP `sendto()`/`sendmsg()` targets (`2afbc17db`); Windows installer and library were not reproducible because of a packer timestamp and random resource-field order (`3ce578eb7`); the Linux release archive carried file times and owners (`deea33505`); `-k _` was no access control on `hbbs`/`hbbr` (it checked a shared string on two messages only; registration and several others were open) and any build could log in to a controlled side, fixed by signed admission (plan section 2q); the controlled side never checked a password (any holder of the server key could raise Accept prompts), fixed by `926d93a04`: the one-time password now gates the prompt and the click authorises (plan section 2p).
+Security review 2026-10-18 (story #62, issues #63-#89): fixed on branch `security/62-review-fixes` (`c1ec801ab` Linux approval,
+`c993d16c9` connection gate, `5b00f256e` Windows pipes and installer, `9b788c914` rendezvous/hbbs and handshake binding,
+`a9730d5eb` credentials, builds, specs); accepted limits are listed in `docs/APPROVAL_SPEC.md` section 9.
 
 ### Work plan (do in this order; one PR-sized change each)
 

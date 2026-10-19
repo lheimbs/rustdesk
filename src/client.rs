@@ -985,7 +985,7 @@ impl Client {
                             peer_nat_type = ph.nat_type();
                             is_local = ph.is_local();
                             signed_id_pk = ph.pk.into();
-                            relay_server = crate::trusted_relay_server(&rendezvous_server, &ph.relay_server);
+                            relay_server = crate::trusted_relay_server(&rendezvous_server);
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
                             webrtc_sdp_answer = ph.webrtc_sdp_answer;
@@ -1085,7 +1085,7 @@ impl Client {
                         // Keep relay_server for a WebRTC secure-failure fallback: request_relay
                         // coordinates a FRESH uuid via the rendezvous server, so it works even if
                         // the raced create_relay already consumed the original uuid pairing.
-                        let relay_server_rr = crate::trusted_relay_server(&rendezvous_server, &rr.relay_server);
+                        let relay_server_rr = crate::trusted_relay_server(&rendezvous_server);
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
