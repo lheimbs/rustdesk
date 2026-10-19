@@ -370,6 +370,8 @@ pub struct Connection {
     unauthorized_id: Option<UnauthorizedID>,
     require_2fa: Option<totp_rs::TOTP>,
     awaiting_2fa: bool,
+    /// The approval card is up for this login (password and approver check passed): only now may Accept start the proof.
+    awaiting_click: bool,
     keyboard: bool,
     clipboard: bool,
     audio: bool,
@@ -532,8 +534,10 @@ impl Connection {
             controlled_context,
         } = meta;
         // Android is not supported yet, so we always set control_permissions to None.
-        #[cfg(target_os = "android")]
-        let control_permissions = None;
+        // Handover: never on any platform. They arrive in rendezvous messages, and a server or controller must not turn on
+        // what this machine disabled (#75).
+        let _ = control_permissions;
+        let control_permissions: Option<ControlPermissions> = None;
         let _raii_id = raii::ConnectionID::new(id);
         let _raii_control_permissions_id =
             raii::ControlPermissionsID::new(id, &control_permissions);
@@ -567,6 +571,7 @@ impl Connection {
             },
             require_2fa: crate::auth_2fa::get_2fa(None),
             awaiting_2fa: false,
+            awaiting_click: false,
             // Defer display enumeration until login succeeds. Monitor login replaces this
             // with the primary index returned with the refreshed display snapshot.
             display_idx: 0,
@@ -751,12 +756,17 @@ impl Connection {
                 }
                 Some(approved) = rx_approval.recv() => {
                     approving = false;
+                    conn.awaiting_click = false;
                     if !approved {
                         super::connection_log::record(
                             conn.inner.id(),
                             "approval-denied",
                             &format!("{} from {}", conn.lr.my_id, conn.ip),
                         );
+                        // the declined controller knows the password now: it must not simply try again (#85)
+                        if password::temporary_enabled() {
+                            password::update_temporary_password();
+                        }
                         conn.send_close_reason_no_retry(super::approval::DECLINED).await;
                         conn.on_close("approval was not given", true).await;
                         break;
@@ -779,6 +789,12 @@ impl Connection {
                             // (the result arrives on `rx_approval`).
                             #[cfg(any(target_os = "linux", windows))]
                             {
+                                // Accept counts only for the card this login earned (password right, approver here),
+                                // once (#70, #85).
+                                if !conn.awaiting_click || conn.authorized {
+                                    log::warn!("Accept without an approval card was ignored");
+                                    continue;
+                                }
                                 if !approving {
                                     approving = true;
                                     let tx = tx_approval.clone();
@@ -795,7 +811,8 @@ impl Connection {
                                                 .unwrap_or(0);
                                         let id = conn.inner.id();
                                         tokio::spawn(async move {
-                                            tx.send(super::elevation::approve_connection(id, serial).await).ok();
+                                            let ok = super::elevation::approve_connection(id, serial, || tx.is_closed()).await;
+                                            tx.send(ok).ok();
                                         });
                                     }
                                 }
@@ -851,11 +868,17 @@ impl Connection {
                             conn.chat_unanswered = false;
                         }
                         ipc::Data::SwitchPermission{name, enabled} => {
+                            if enabled && Self::is_always_disabled_cm_permission(&name) {
+                                log::warn!("Change permission {} -> true refused: never available", name);
+                                conn.send_to_cm(ipc::Data::SwitchPermission { name, enabled: false });
+                                continue;
+                            }
                             log::info!("Change permission {} -> {}", name, enabled);
                             if &name == "keyboard" {
                                 conn.keyboard = enabled;
                                 conn.send_permission(Permission::Keyboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
+                                // before authorization the login path subscribes from these flags (#77)
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::NAME,
                                         conn.inner.clone(), conn.can_sub_clipboard_service());
@@ -872,7 +895,7 @@ impl Connection {
                             } else if &name == "clipboard" {
                                 conn.clipboard = enabled;
                                 conn.send_permission(Permission::Clipboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::NAME,
                                         conn.inner.clone(), conn.can_sub_clipboard_service());
@@ -903,7 +926,7 @@ impl Connection {
                                     conn.try_empty_file_clipboard();
                                 }
                                 #[cfg(feature = "unix-file-copy-paste")]
-                                if let Some(s) = conn.server.upgrade() {
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::FILE_NAME,
                                         conn.inner.clone(),
@@ -2683,6 +2706,7 @@ impl Connection {
                     self.send_login_error(refusal.message()).await;
                     return true;
                 }
+                self.awaiting_click = true;
                 self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), false);
             }
         }
@@ -2757,6 +2781,27 @@ impl Connection {
             }
         }
         false
+    }
+
+    /// Switch sides would authorize a session outside the approval flow (docs/APPROVAL_SPEC.md decision 1).
+    fn switch_sides_allowed() -> bool {
+        false
+    }
+
+    /// A connection manager toggle (`SwitchPermission` name) for a feature that is never available.
+    fn is_always_disabled_cm_permission(name: &str) -> bool {
+        let option = match name {
+            "restart" => keys::OPTION_ENABLE_REMOTE_RESTART,
+            "recording" => keys::OPTION_ENABLE_RECORD_SESSION,
+            "block_input" => keys::OPTION_ENABLE_BLOCK_INPUT,
+            "privacy_mode" => keys::OPTION_ENABLE_PRIVACY_MODE,
+            "camera" => keys::OPTION_ENABLE_CAMERA,
+            "terminal" => keys::OPTION_ENABLE_TERMINAL,
+            "tunnel" => keys::OPTION_ENABLE_TUNNEL,
+            "remote_printer" => keys::OPTION_ENABLE_REMOTE_PRINTER,
+            _ => return false,
+        };
+        Self::is_always_disabled(option)
     }
 
     /// Features that are never available, whatever the options or the rendezvous server say.
@@ -3015,6 +3060,11 @@ impl Connection {
         }
         // After handling CloseReason messages, proceed to process other message types
         if let Some(message::Union::LoginRequest(lr)) = msg.union {
+            // the administrator approves the details on the card: a later request must not replace them (#78)
+            if self.awaiting_click {
+                log::warn!("a further login request while the approval card is up was ignored");
+                return true;
+            }
             if !self.check_login_scope(&lr).await {
                 return false;
             }
@@ -3182,6 +3232,12 @@ impl Connection {
                 }
             }
         } else if let Some(message::Union::SwitchSidesResponse(_s)) = msg.union {
+            // Handover: switching sides would authorize without the one-time password and the approval (#71).
+            if !Self::switch_sides_allowed() {
+                log::warn!("Rejected a switch sides response: not available");
+                self.send_login_error("Connection not allowed").await;
+                return false;
+            }
             #[cfg(feature = "flutter")]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             if let Some(lr) = _s.lr.clone().take() {
@@ -3370,9 +3426,8 @@ impl Connection {
                         return true;
                     }
                     if self.peer_keyboard_enabled() {
-                        if is_enter(&me) {
-                            CLICK_TIME.store(get_time(), Ordering::SeqCst);
-                        }
+                        // any key can activate a focused CM button (Enter, Space, Tab to it): block CM clicks after each
+                        CLICK_TIME.store(get_time(), Ordering::SeqCst);
                         // https://github.com/rustdesk/rustdesk/issues/8633
                         MOUSE_MOVE_TIME.store(get_time(), Ordering::SeqCst);
 

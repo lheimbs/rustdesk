@@ -922,6 +922,9 @@ fn serve_elevation_request(
             );
             reply
         }
+        ServiceRequest::ApprovalCreate { conn_id } if from_server => {
+            requests.create_approval(conn_id, session_id, new_nonce(), Instant::now())
+        }
         ServiceRequest::ApprovalCheck if from_server => {
             use crate::server::approval::{decide, Approval, ProofPolicy, SessionUser};
             let user = if get_session_username(session_id).is_empty() {

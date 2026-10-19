@@ -35,6 +35,9 @@ pub enum ServiceRequest {
     ResumeCheck { id: Vec<u8>, mac: Vec<u8>, challenge: String, peer_id: String, serial: u64 },
     /// From the user-level server: start the privileged helper (E9) for this grant on its shared memory.
     StartHelper { nonce: String, shmem_name: String },
+    /// From the user-level server (APPROVAL_SPEC.md): a connection waits for the administrator's approval. Its own slot, beside a
+    /// tier 1 request or grant; the reply is `Created(nonce)`, then `Poll`/`Cancel` as for tier 1. The proof grants nothing else.
+    ApprovalCreate { conn_id: i32 },
     /// From the user-level server (APPROVAL_SPEC.md): is an administrator signed in at this session and would the UAC prompt mean
     /// something? `Done`, or `Denied(<`Refusal::log_word`>)`.
     ApprovalCheck,
@@ -123,10 +126,24 @@ struct Grant {
     account: String,
 }
 
+/// A connection waiting for the administrator's approval (APPROVAL_SPEC.md); `account` is set once proved.
+#[derive(Debug)]
+struct ApprovalPending {
+    nonce: String,
+    conn_id: i32,
+    session_id: u32,
+    created: Instant,
+    account: Option<String>,
+}
+
+/// More open approvals than connections would wait at a time: refuse (each one is a UAC prompt).
+const MAX_APPROVALS: usize = 4;
+
 #[derive(Debug, Default)]
 pub struct Requests {
     pending: Option<Pending>,
     grant: Option<Grant>,
+    approvals: Vec<ApprovalPending>,
     /// The server process and session the current request or grant belongs to.
     owner: Option<(u32, u32)>,
     resume: Option<ResumeGrant>,
@@ -161,13 +178,51 @@ impl Requests {
         if self.pending.as_ref().map_or(false, |p| p.nonce == nonce) {
             self.pending = None;
         }
+        self.approvals.retain(|a| a.nonce != nonce);
         ServiceReply::Done
+    }
+
+    /// APPROVAL_SPEC.md: one slot per waiting connection, independent of tier 1 (#85).
+    pub fn create_approval(&mut self, conn_id: i32, session_id: u32, nonce: String, now: Instant) -> ServiceReply {
+        self.expire(now);
+        self.approvals.retain(|a| a.conn_id != conn_id);
+        if self.approvals.len() >= MAX_APPROVALS {
+            return ServiceReply::Denied("too many connections wait for an approval".to_owned());
+        }
+        self.approvals.push(ApprovalPending { nonce: nonce.clone(), conn_id, session_id, created: now, account: None });
+        ServiceReply::Created(nonce)
+    }
+
+    /// The proof of an approval: from an elevated process in the request's session. `None`: not an approval nonce.
+    fn prove_approval(&mut self, nonce: &str, facts: &ProofFacts) -> Option<ServiceReply> {
+        let a = self.approvals.iter_mut().find(|a| a.nonce == nonce && a.account.is_none())?;
+        if !facts.elevated {
+            return Some(ServiceReply::Denied("the proof did not come from an elevated process".to_owned()));
+        }
+        if facts.session_id != a.session_id {
+            return Some(ServiceReply::Denied("the proof came from another session".to_owned()));
+        }
+        a.account = Some(facts.account.clone());
+        Some(ServiceReply::Done)
+    }
+
+    /// `Granted` is reported once: the approval is consumed.
+    fn poll_approval(&mut self, nonce: &str) -> Option<ServiceReply> {
+        let i = self.approvals.iter().position(|a| a.nonce == nonce)?;
+        if self.approvals[i].account.is_none() {
+            return Some(ServiceReply::Waiting);
+        }
+        let a = self.approvals.remove(i);
+        Some(ServiceReply::Granted { secs_left: 0, account: a.account.unwrap_or_default(), resume: vec![] })
     }
 
     /// S2/S3: a proof creates the grant only for the pending request with this nonce, from an elevated process in
     /// the same session; the nonce is used up. A refused proof leaves the request waiting for a real one.
     pub fn prove(&mut self, nonce: &str, facts: &ProofFacts, now: Instant) -> ServiceReply {
         self.expire(now);
+        if let Some(reply) = self.prove_approval(nonce, facts) {
+            return reply;
+        }
         let Some(pending) = self.pending.as_ref().filter(|p| p.nonce == nonce) else {
             return ServiceReply::Denied("no such request (unknown, used or expired)".to_owned());
         };
@@ -204,6 +259,9 @@ impl Requests {
 
     pub fn poll(&mut self, nonce: &str, now: Instant) -> ServiceReply {
         self.expire(now);
+        if let Some(reply) = self.poll_approval(nonce) {
+            return reply;
+        }
         if let Some(g) = self.grant.as_ref().filter(|g| g.nonce == nonce) {
             let mut resume = vec![];
             if let Some(r) = self.resume.as_mut().filter(|r| r.grant_nonce == nonce && !r.delivered) {
@@ -278,6 +336,7 @@ impl Requests {
     /// is meant for exactly this and stays (it ends by time, by decision, or when another user signs in).
     pub fn reset(&mut self) -> Option<i32> {
         self.pending = None;
+        self.approvals.clear();
         self.owner = None;
         self.grant.take().map(|g| g.conn_id)
     }
@@ -315,6 +374,7 @@ impl Requests {
     }
 
     fn expire(&mut self, now: Instant) {
+        self.approvals.retain(|a| now.saturating_duration_since(a.created) < REQUEST_TTL);
         if self.grant.as_ref().map_or(false, |g| now >= g.until) {
             self.grant = None;
         }
@@ -354,6 +414,23 @@ mod tests {
         assert!(r.is_pending(t0 + REQUEST_TTL - Duration::from_secs(1)));
         assert!(!r.is_pending(t0 + REQUEST_TTL));
         assert_eq!(r.create(3, 9, 100, 1, "n3".into(), t0 + REQUEST_TTL), ServiceReply::Created("n3".into()));
+    }
+
+    #[test]
+    fn an_approval_waits_beside_a_tier_1_grant_and_grants_nothing_else() {
+        let t0 = Instant::now();
+        let mut r = Requests::default();
+        r.create(1, 7, 100, 1, "g".into(), t0);
+        assert_eq!(r.prove("g", &facts(1, true), t0), ServiceReply::Done);
+        assert_eq!(r.create_approval(2, 1, "a".into(), t0), ServiceReply::Created("a".into()));
+        assert_eq!(r.poll("a", t0), ServiceReply::Waiting);
+        assert!(matches!(r.prove("a", &facts(1, false), t0), ServiceReply::Denied(_)));
+        assert!(matches!(r.prove("a", &facts(2, true), t0), ServiceReply::Denied(_)));
+        assert_eq!(r.prove("a", &facts(1, true), t0), ServiceReply::Done);
+        assert!(matches!(r.poll("a", t0), ServiceReply::Granted { .. }));
+        assert!(matches!(r.poll("a", t0), ServiceReply::Gone(_)), "collected once");
+        assert!(!r.is_granted_to("a", t0));
+        assert!(r.is_granted_to("g", t0), "the tier 1 grant is untouched");
     }
 
     fn facts(session_id: u32, elevated: bool) -> ProofFacts {
