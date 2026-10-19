@@ -9,6 +9,7 @@ use std::{
 
 /// How long a registered request waits for its proof.
 pub const PROOF_TTL: Duration = Duration::from_secs(60);
+const MAX_PER_USER: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Poll {
@@ -41,10 +42,16 @@ impl Approvals {
         self.map.retain(|_, p| now.duration_since(p.created) < PROOF_TTL);
     }
 
-    /// Register a nonce for `uid`. A user has one open request: a new one replaces the old.
+    /// Register a nonce for `uid`. A user has a few open requests (one per waiting connection); past that the oldest goes.
     pub fn create(&mut self, uid: u32, nonce: &str, now: Instant) {
         self.expire(now);
-        self.map.retain(|_, p| p.uid != uid);
+        while self.map.values().filter(|p| p.uid == uid).count() >= MAX_PER_USER {
+            let oldest = self.map.iter().filter(|(_, p)| p.uid == uid).min_by_key(|(_, p)| p.created).map(|(n, _)| n.clone());
+            match oldest {
+                Some(n) => self.map.remove(&n),
+                None => break,
+            };
+        }
         if nonce.len() >= 32 {
             self.map.insert(nonce.to_owned(), Pending { uid, created: now, granted: false });
         }
@@ -128,14 +135,18 @@ mod tests {
     }
 
     #[test]
-    fn a_new_request_replaces_the_users_old_one_and_short_nonces_are_ignored() {
+    fn a_second_request_of_the_user_waits_beside_the_first_and_short_nonces_are_ignored() {
         let (mut a, t) = (Approvals::default(), Instant::now());
         a.create(1000, N, t);
         a.create(1000, M, t);
-        assert_eq!(a.prove(N, Some(1000), t), Err(ProofError::UnknownOrExpired));
+        assert_eq!(a.prove(N, Some(1000), t), Ok(()));
+        assert_eq!(a.poll(1000, M, t), Poll::Waiting);
         a.create(1000, "short", t);
         assert_eq!(a.poll(1000, "short", t), Poll::Gone);
-        assert_eq!(a.poll(1000, M, t), Poll::Gone);
+        for i in 0..MAX_PER_USER {
+            a.create(1000, &format!("{:064}", i), t + Duration::from_millis(1 + i as u64));
+        }
+        assert_eq!(a.poll(1000, N, t), Poll::Gone, "the oldest goes past the limit");
     }
 
     #[test]

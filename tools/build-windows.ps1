@@ -5,7 +5,7 @@ Build the Handover Windows installer (handover-install.exe) on a Windows 10/11 x
   .\tools\build-windows.ps1 -Server <host> -Key <id_ed25519.pub of your hbbs>   # or pass them explicitly
 
 Prerequisites (see docs/TRUST_HARDENING_PLAN.md, Phase W): Visual Studio 2022 Build Tools (C++ x64 + Windows SDK),
-LLVM 15.0.6, Rust 1.75 (rust-toolchain.toml), Flutter 3.24.5, Python 3 (+ pip install brotli),
+LLVM 15.0.6, Rust 1.75 (rust-toolchain.toml), Flutter 3.24.5, Python 3.12 or 3.13 (brotli: installed pinned by hash),
 vcpkg at 9e593bb18ea69cc5095e012465dcd675a822ed0d with `vcpkg install --triplet x64-windows-static`
 run in the repo root (installed under -VcpkgInstalled), and the generated bridge files
 (tools/gen-bridge.sh on Linux, copied over: src/bridge_generated*.rs, flutter/lib/generated_bridge*.dart).
@@ -104,11 +104,27 @@ if ($Sign) {
   $inner = Get-ChildItem $bundle -Recurse -Include *.exe, *.dll | ForEach-Object { $_.FullName }
   & "$PSScriptRoot\sign-windows.ps1" -Files $inner @signArgs
 }
+# Vendor-host scan of every file that goes into the installer, as tools/build-linux.sh does (#88); 8-bit and UTF-16 strings.
+$vendorHosts = 'rustdesk\.(com|cn)|rs-ny\.|rs-sg\.|rs-cn\.|stun\.l\.google|stun\.cloudflare|stun\.antisip|stun\.nextcloud|nip\.io|telegram\.org'
+$hits = @()
+foreach ($f in Get-ChildItem $bundle -Recurse -File) {
+  $bytes = [IO.File]::ReadAllBytes($f.FullName)
+  $texts = @([Text.Encoding]::GetEncoding(28591).GetString($bytes), [Text.Encoding]::Unicode.GetString($bytes))
+  if ($bytes.Length -gt 1) { $texts += [Text.Encoding]::Unicode.GetString($bytes, 1, $bytes.Length - 1) }
+  foreach ($t in $texts) {
+    if ($t -match $vendorHosts) { $hits += "$($f.FullName): $($Matches[0])"; break }
+  }
+}
+if ($hits.Count -gt 0) { $hits | ForEach-Object { Write-Host $_ }; throw 'vendor hosts found in the build (listed above)' }
+Write-Host 'vendor-host scan: none found'
 Push-Location libs\portable
-python -m pip install -r requirements.txt
+python -m pip install --require-hashes -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 Invoke-InVsEnv "python generate.py -f ..\..\$bundle -o . -e ..\..\$bundle\handover.exe"
 Pop-Location
-Copy-Item -Force target\release\rustdesk-portable-packer.exe handover-install.exe
-if ($Sign) { & "$PSScriptRoot\sign-windows.ps1" -Files (Resolve-Path handover-install.exe).Path @signArgs }
-Get-FileHash handover-install.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  handover-install.exe" } | Tee-Object SHA256SUMS.txt
-Write-Host "built handover-install.exe"
+# The controlled-only build is the customer installer: its name says so, a full build is never mistaken for it (#88).
+$installer = if ($env:HANDOVER_LITE) { 'handover-install-lite.exe' } else { 'handover-install.exe' }
+Copy-Item -Force target\release\rustdesk-portable-packer.exe $installer
+if ($Sign) { & "$PSScriptRoot\sign-windows.ps1" -Files (Resolve-Path $installer).Path @signArgs }
+Get-FileHash $installer -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $installer" } | Tee-Object SHA256SUMS.txt
+Write-Host "built $installer"

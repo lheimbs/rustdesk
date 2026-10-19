@@ -279,12 +279,17 @@ pub async fn approval_check() -> Result<(), super::approval::Refusal> {
 }
 
 /// The Accept click is not enough (APPROVAL_SPEC.md): the administrator answers the Windows (UAC) prompt, and the service
-/// confirms that proof. Uses the E7/E8 request, ended again at once: this approves the connection, it grants no tier 1.
+/// confirms that proof. The service keeps it apart from tier 1: this approves the connection, it grants nothing else.
+/// `closed` says the connection is gone: the request ends with it.
 #[cfg(windows)]
-pub async fn approve_connection(conn_id: i32, serial: u64) -> bool {
-    use super::elevation_grant::ServiceReply;
-    let Ok(nonce) = create_in_service(conn_id, serial).await else {
-        return false;
+pub async fn approve_connection(conn_id: i32, serial: u64, closed: impl Fn() -> bool) -> bool {
+    use super::elevation_grant::{ServiceReply, ServiceRequest};
+    let nonce = match call_service(ServiceRequest::ApprovalCreate { conn_id }).await {
+        Ok(ServiceReply::Created(nonce)) => nonce,
+        other => {
+            hbb_common::log::warn!("approval: the service did not record the request (serial {}): {:?}", serial, other);
+            return false;
+        }
     };
     let arg = format!("--elevation-proof {}", nonce);
     let declined = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -302,7 +307,7 @@ pub async fn approve_connection(conn_id: i32, serial: u64) -> bool {
     });
     let deadline = std::time::Instant::now() + Duration::from_secs(PROOF_SECS);
     let mut granted = false;
-    while std::time::Instant::now() < deadline && !declined.load(std::sync::atomic::Ordering::SeqCst) {
+    while std::time::Instant::now() < deadline && !declined.load(std::sync::atomic::Ordering::SeqCst) && !closed() {
         match poll_service(nonce.clone()).await {
             Some(ServiceReply::Granted { .. }) => {
                 granted = true;

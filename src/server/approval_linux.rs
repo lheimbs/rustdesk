@@ -13,6 +13,7 @@ use crate::ipc::{self, Data};
 use hbb_common::{log, tokio, ResultType};
 use serde_derive::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -61,6 +62,10 @@ pub(crate) fn user_name(uid: u32) -> Option<String> {
 
 /// `sudo -l -U <name>` as root: what sudo itself says about the user.
 fn check_user(uid: u32) -> Approval {
+    // root and system accounts are nobody signed in (a login screen), and root's own sudo asks for no password.
+    if uid < uid_min() {
+        return Approval::Refused(Refusal::NoAdministrator);
+    }
     let Some(name) = user_name(uid) else {
         return Approval::Refused(Refusal::NoAdministrator);
     };
@@ -81,6 +86,15 @@ fn check_user(uid: u32) -> Approval {
     approval::decide(who, proof)
 }
 
+/// The first uid of a person's account (`UID_MIN` in /etc/login.defs, 1000 when unset).
+fn uid_min() -> u32 {
+    std::fs::read_to_string("/etc/login.defs")
+        .ok()
+        .and_then(|t| approval::login_defs_uid_min(&t))
+        .unwrap_or(1000)
+        .max(1)
+}
+
 /// The uid sudo recorded in the environment of the proof process (a root process can read it).
 fn sudo_uid_of(pid: u32) -> Option<u32> {
     let env = std::fs::read(format!("/proc/{}/environ", pid)).ok()?;
@@ -98,6 +112,10 @@ fn answer(req: Request, peer_uid: u32, peer_pid: Option<u32>) -> Reply {
             Approval::Refused(r) => Reply::Refused(r),
         },
         Request::Create { nonce } => {
+            // the caller's own Check is not enough: ask again before a proof may start
+            if let Approval::Refused(r) = check_user(peer_uid) {
+                return Reply::Refused(r);
+            }
             with_approvals(|a| a.create(peer_uid, &nonce, now));
             Reply::Done
         }
@@ -130,16 +148,64 @@ fn answer(req: Request, peer_uid: u32, peer_pid: Option<u32>) -> Reply {
     }
 }
 
+const MAX_CONNECTIONS_PER_UID: usize = 8;
+const MAX_FRAME: usize = 4096;
+static CONNECTIONS: Mutex<Option<HashMap<u32, usize>>> = Mutex::new(None);
+
+struct ConnectionSlot(u32);
+
+impl ConnectionSlot {
+    fn take(uid: u32) -> Option<Self> {
+        let mut g = CONNECTIONS.lock().unwrap();
+        let n = g.get_or_insert_with(HashMap::new).entry(uid).or_default();
+        if *n >= MAX_CONNECTIONS_PER_UID {
+            return None;
+        }
+        *n += 1;
+        Some(Self(uid))
+    }
+}
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        let mut g = CONNECTIONS.lock().unwrap();
+        if let Some(m) = g.as_mut() {
+            if let Some(n) = m.get_mut(&self.0) {
+                *n = n.saturating_sub(1);
+                if *n == 0 {
+                    m.remove(&self.0);
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 pub async fn serve() -> ResultType<()> {
     use hbb_common::futures::StreamExt;
-    let mut incoming = ipc::new_listener(POSTFIX).await?;
+    // Without this listener nobody can approve; keep trying (a squatter's socket is replaced, see ipc::connect).
+    let mut incoming = loop {
+        match ipc::new_listener(POSTFIX).await {
+            Ok(incoming) => break incoming,
+            Err(err) => {
+                log::error!("approval: cannot listen on ipc{}: {}; retrying", POSTFIX, err);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
+    };
     while let Some(result) = incoming.next().await {
         let Ok(stream) = result else { continue };
+        let mut stream = ipc::Connection::new(stream);
+        stream.set_max_packet_length(MAX_FRAME);
+        let (uid, pid) = (stream.peer_uid(), stream.peer_pid());
+        let Some(uid) = uid else { continue };
+        // One user cannot crowd out another (each connection may run sudo).
+        let Some(_slot) = ConnectionSlot::take(uid) else {
+            log::warn!("approval: too many connections from uid {}, one was dropped", uid);
+            continue;
+        };
         tokio::spawn(async move {
-            let mut stream = ipc::Connection::new(stream);
-            let (uid, pid) = (stream.peer_uid(), stream.peer_pid());
-            let Some(uid) = uid else { return };
+            let _slot = _slot;
             while let Ok(Some(Data::Approval(req))) = stream.next_timeout(5000).await {
                 // sudo may take a moment; keep the loop off the other connections
                 let reply = tokio::task::spawn_blocking(move || answer(req, uid, pid))

@@ -19,6 +19,9 @@ const PREFIX: &str = "hc1";
 pub const WINDOW_SECS: u64 = 600;
 const CLOCK_LEEWAY: u64 = 86_400;
 const MAX_SEEN: usize = 200_000;
+/// One credential may hold at most this share of the replay cache, so a holder of the shared device credential cannot fill
+/// it and lock out the controllers (#80).
+const MAX_SEEN_PER_SERIAL: usize = MAX_SEEN / 2;
 const MAX_TOKEN_LEN: usize = 512;
 const REVOKED_RECHECK: Duration = Duration::from_secs(5);
 
@@ -102,7 +105,26 @@ pub struct Gate {
     issuer: IssuerPublicKey,
     revoked_path: Option<PathBuf>,
     revoked: Mutex<Revoked>,
-    seen: Mutex<HashMap<[u8; 16], u64>>,
+    seen: Mutex<Seen>,
+}
+
+/// Tokens accepted within their window (id -> until, serial), and how many each credential holds.
+#[derive(Default)]
+struct Seen {
+    entries: HashMap<[u8; 16], (u64, u64)>,
+    per_serial: HashMap<u64, usize>,
+    max: usize,
+    max_per_serial: usize,
+}
+
+impl Seen {
+    fn expire(&mut self, now: u64) {
+        self.entries.retain(|_, (until, _)| *until > now);
+        self.per_serial.clear();
+        for (_, serial) in self.entries.values() {
+            *self.per_serial.entry(*serial).or_default() += 1;
+        }
+    }
 }
 
 struct Revoked {
@@ -117,7 +139,7 @@ impl Gate {
             issuer,
             revoked_path,
             revoked: Mutex::new(Revoked { checked: None, modified: None, serials: HashSet::new() }),
-            seen: Mutex::new(HashMap::new()),
+            seen: Mutex::new(Seen { max: MAX_SEEN, max_per_serial: MAX_SEEN_PER_SERIAL, ..Default::default() }),
         }
     }
 
@@ -163,15 +185,19 @@ impl Gate {
             return Err(Error::Revoked);
         }
         let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
-        if seen.len() >= MAX_SEEN || seen.len() > 1000 && seen.len() % 1000 == 0 {
-            seen.retain(|_, until| *until > now);
+        let n = seen.entries.len();
+        let full = |s: &Seen| s.entries.len() >= s.max || s.per_serial.get(&cred.serial).copied().unwrap_or(0) >= s.max_per_serial;
+        if full(&seen) || n > 1000 && n % 1000 == 0 {
+            seen.expire(now);
         }
-        if seen.len() >= MAX_SEEN {
+        if full(&seen) {
             return Err(Error::Replayed);
         }
-        if seen.insert(id, now + 2 * WINDOW_SECS + 5).is_some() {
+        if seen.entries.contains_key(&id) {
             return Err(Error::Replayed);
         }
+        seen.entries.insert(id, (now + 2 * WINDOW_SECS + 5, cred.serial));
+        *seen.per_serial.entry(cred.serial).or_default() += 1;
         Ok(cred)
     }
 }
@@ -197,6 +223,31 @@ mod tests {
         let t = make(&h, "register", "123456789", NOW);
         assert_eq!(gate.check_at(&t, "register", "123456789", &[Role::Device], NOW).unwrap().serial, 5);
         assert_eq!(gate.check_at(&t, "register", "123456789", &[Role::Device], NOW), Err(Error::Replayed));
+    }
+
+    #[test]
+    fn one_credential_cannot_fill_the_replay_cache_for_the_others() {
+        let (ipk, isk) = new_issuer();
+        let mk = |role, serial| {
+            let (seed, hpk) = new_holder();
+            HolderFile { credential: issue(&isk, role, "t", serial, NOW - 100, NOW + 100_000, &hpk).unwrap(), seed }
+        };
+        let (device, controller) = (mk(Role::Device, 1), mk(Role::Controller, 2));
+        let gate = Gate::new(ipk, None);
+        {
+            let mut seen = gate.seen.lock().unwrap();
+            seen.max = 10;
+            seen.max_per_serial = 5;
+        }
+        let roles = [Role::Device, Role::Controller];
+        for _ in 0..5 {
+            assert!(gate.check_at(&make(&device, "register", "x", NOW), "register", "x", &roles, NOW).is_ok());
+        }
+        assert_eq!(gate.check_at(&make(&device, "register", "x", NOW), "register", "x", &roles, NOW), Err(Error::Replayed));
+        assert!(gate.check_at(&make(&controller, "punch", "x", NOW), "punch", "x", &roles, NOW).is_ok());
+        // the window passes: room again
+        let later = NOW + 2 * WINDOW_SECS + 6;
+        assert!(gate.check_at(&make(&device, "register", "x", later), "register", "x", &roles, later).is_ok());
     }
 
     #[test]

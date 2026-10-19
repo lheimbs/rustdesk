@@ -142,6 +142,10 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--build-date" {
             println!("{}", crate::BUILD_DATE);
             return None;
+        } else if args[0] == "--build-flavor" {
+            // Handover (#88): which build this is, controlled-only (lite) or full
+            println!("{}", if cfg!(feature = "lite") { "lite" } else { "full" });
+            return None;
         }
     }
     #[cfg(windows)]

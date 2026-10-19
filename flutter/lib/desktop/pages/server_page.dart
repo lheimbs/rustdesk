@@ -716,6 +716,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable audio'),
                         canModify: canModifyPermission,
                       ),
+                      if (kShowNeverAvailablePermissions)
                       buildPermissionIcon(
                         client.recording,
                         Icons.videocam_rounded,
@@ -793,6 +794,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable file copy and paste'),
                         canModify: canModifyPermission,
                       ),
+                      if (kShowNeverAvailablePermissions)
                       buildPermissionIcon(
                         client.restart,
                         Icons.restart_alt_rounded,
@@ -808,6 +810,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable remote restart'),
                         canModify: canModifyPermission,
                       ),
+                      if (kShowNeverAvailablePermissions)
                       buildPermissionIcon(
                         client.recording,
                         Icons.videocam_rounded,
@@ -824,7 +827,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         canModify: canModifyPermission,
                       ),
                       // only windows support block input
-                      if (isWindows)
+                      if (isWindows && kShowNeverAvailablePermissions)
                         buildPermissionIcon(
                           client.blockInput,
                           Icons.block,
@@ -840,7 +843,8 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                           translate('Enable blocking user input'),
                           canModify: canModifyPermission,
                         ),
-                      if (bind.mainSupportedPrivacyModeImpls() != '[]')
+                      if (kShowNeverAvailablePermissions &&
+                          bind.mainSupportedPrivacyModeImpls() != '[]')
                         buildPermissionIcon(
                           client.privacyMode,
                           Icons.visibility_off,
@@ -866,6 +870,9 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
 }
 
 const double buttonBottomMargin = 8;
+
+/// Handover: remote restart, recording, block input and privacy mode are never available (the server refuses them).
+const bool kShowNeverAvailablePermissions = false;
 
 class _CmControlPanel extends StatelessWidget {
   final Client client;

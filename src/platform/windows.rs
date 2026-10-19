@@ -922,6 +922,9 @@ fn serve_elevation_request(
             );
             reply
         }
+        ServiceRequest::ApprovalCreate { conn_id } if from_server => {
+            requests.create_approval(conn_id, session_id, new_nonce(), Instant::now())
+        }
         ServiceRequest::ApprovalCheck if from_server => {
             use crate::server::approval::{decide, Approval, ProofPolicy, SessionUser};
             let user = if get_session_username(session_id).is_empty() {
@@ -976,7 +979,11 @@ fn serve_elevation_request(
             reply
         }
         ServiceRequest::ResumeCheck { id, mac, challenge, peer_id, serial } if from_server => {
-            let signed_in = session_user_sid(session_id);
+            // Someone is signed in but who could not be read: that may be another user (#79).
+            let Ok(signed_in) = session_user_sid_checked(session_id) else {
+                log::warn!("elevation: resume refused for controller serial {}: the signed-in user is unknown", serial);
+                return ServiceReply::Denied("the signed-in user could not be determined".to_owned());
+            };
             let reply = requests.resume_check(&id, &mac, &challenge, &peer_id, serial, signed_in.as_deref(), Instant::now());
             match &reply {
                 ServiceReply::Done => log::info!("elevation: resume accepted for controller serial {} (session {})", serial, session_id),
@@ -1031,6 +1038,14 @@ fn serve_elevation_request(
             ServiceReply::Denied("the caller is not the server of this session".to_owned())
         }
     }
+}
+
+/// Like `session_user_sid`, but a failed lookup while somebody is signed in is an error, not "nobody" (#79).
+fn session_user_sid_checked(session_id: u32) -> Result<Option<String>, ()> {
+    if get_session_username(session_id).is_empty() {
+        return Ok(None);
+    }
+    session_user_sid(session_id).map(Some).ok_or(())
 }
 
 /// SID of the user signed in to `session_id`, `None` when nobody is (sign-in screen) (elevation E10).
@@ -1122,7 +1137,18 @@ fn stop_elevation_helper_without_grant(
 }
 
 /// `DOMAIN\\user` of a process's token user: the account that approved a UAC prompt, for the connection log.
-fn process_account(process_id: DWORD) -> ResultType<String> {
+/// The process of this program's running service, as the service control manager reports it (#67).
+pub fn service_process_id() -> Option<u32> {
+    use windows_service::{
+        service::ServiceAccess,
+        service_manager::{ServiceManager, ServiceManagerAccess},
+    };
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT).ok()?;
+    let service = manager.open_service(crate::get_app_name(), ServiceAccess::QUERY_STATUS).ok()?;
+    service.query_status().ok()?.process_id.filter(|pid| *pid != 0)
+}
+
+pub(crate) fn process_account(process_id: DWORD) -> ResultType<String> {
     use windows::Win32::Security::{LookupAccountSidW, SID_NAME_USE};
     unsafe {
         let process = WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
@@ -1822,7 +1848,11 @@ fn get_default_install_info() -> (String, String, String, String) {
 
 fn get_default_install_path() -> String {
     let mut pf = "C:\\Program Files".to_owned();
-    if let Ok(x) = std::env::var("ProgramFiles") {
+    // Handover (#74): from HKLM, which only administrators can change; %ProgramFiles% can be set per user.
+    if let Ok(x) = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags("SOFTWARE\\Microsoft\\Windows\\CurrentVersion", KEY_READ)
+        .and_then(|k| k.get_value::<String, _>("ProgramFilesDir"))
+    {
         if std::path::Path::new(&x).exists() {
             pf = x;
         }
@@ -1897,16 +1927,12 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String, Stri
 }
 
 pub fn copy_raw_cmd(src_raw: &str, _raw: &str, _path: &str) -> ResultType<String> {
-    let main_raw = format!(
-        "XCOPY \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z",
-        PathBuf::from(src_raw)
-            .parent()
-            .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
-            .to_string_lossy()
-            .to_string(),
-        _path
-    );
-    return Ok(main_raw);
+    let src_dir = PathBuf::from(src_raw);
+    let src_dir = src_dir
+        .parent()
+        .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?;
+    // Handover (#73): no plain XCOPY of a folder the user can write while the UAC prompt is open.
+    installer_handoff::verified_copy_commands(src_dir, _path)
 }
 
 pub fn copy_exe_cmd(src_exe: &str, exe: &str, path: &str) -> ResultType<String> {

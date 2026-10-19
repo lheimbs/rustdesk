@@ -59,7 +59,7 @@ use ipc_auth::authorize_user_server_process;
 #[cfg(windows)]
 use ipc_auth::{
     authorize_windows_main_ipc_connection, portable_service_listener_security_attributes,
-    should_allow_everyone_create_on_windows,
+    should_allow_everyone_create_on_windows, windows_session_scoped_postfix,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
@@ -723,7 +723,10 @@ pub async fn start(postfix: &str) -> ResultType<()> {
 }
 
 pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
+    #[cfg(not(windows))]
     let path = Config::ipc_path(postfix);
+    #[cfg(windows)]
+    let path = Config::ipc_path(&windows_session_scoped_postfix(postfix));
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -739,7 +742,8 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     let security_attrs = {
         #[cfg(windows)]
         {
-            if postfix == "_portable_service" {
+            if postfix == "_portable_service" || postfix == "_cm" {
+                // `_cm` too (#68): only this user and SYSTEM, not the default read access for everyone
                 portable_service_listener_security_attributes()
             } else if should_allow_everyone_create_on_windows(postfix) {
                 SecurityAttributes::allow_everyone_create()
@@ -1503,12 +1507,24 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
             return connect_with_path(ms_timeout, &path).await;
         }
         let path = Config::ipc_path(postfix);
-        return connect_with_path(ms_timeout, &path).await;
+        let conn = connect_with_path(ms_timeout, &path).await?;
+        #[cfg(target_os = "linux")]
+        if config::is_service_ipc_postfix(postfix) && conn.peer_uid() != Some(0) {
+            // Only the root service may answer here (approval, config sync, uinput): anyone can create the directory first.
+            bail!("ipc{} is not served by root (uid {:?})", postfix, conn.peer_uid());
+        }
+        return Ok(conn);
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
+        #[cfg(windows)]
+        let path = Config::ipc_path(&windows_session_scoped_postfix(postfix));
+        #[cfg(not(windows))]
         let path = Config::ipc_path(postfix);
-        connect_with_path(ms_timeout, &path).await
+        let conn = connect_with_path(ms_timeout, &path).await?;
+        #[cfg(windows)]
+        conn.verify_windows_pipe_server(postfix)?;
+        Ok(conn)
     }
 }
 
@@ -1632,6 +1648,10 @@ where
         let v = serde_json::to_vec(data)?;
         self.inner.send(bytes::Bytes::from(v)).await?;
         Ok(())
+    }
+
+    pub fn set_max_packet_length(&mut self, n: usize) {
+        self.inner.codec_mut().set_max_packet_length(n);
     }
 
     async fn send_config(&mut self, name: &str, value: String) -> ResultType<()> {

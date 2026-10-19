@@ -2,9 +2,8 @@
 //!
 //! Every message that reaches `hbbs` or `hbbr` carries a token made from a credential signed by the owner's
 //! issuer. Messages that start a connection need a controller credential (`controller.cred`); the ones a
-//! machine sends to be reachable need a device credential (`device.cred`, else the one baked into the build),
-//! and a controller credential is also accepted there. Without a credential the token is empty and the
-//! servers refuse the message.
+//! machine sends to be reachable need a device credential (`device.cred`, else the one baked into the build).
+//! Without a credential the token is empty and the servers refuse the message.
 
 use handover_cred::{token, HolderFile};
 use hbb_common::{
@@ -45,13 +44,14 @@ pub fn controller_token(kind: &str, context: &str) -> String {
     make(controller(), kind, context)
 }
 
-/// For messages a machine sends to be registered and relayed: its device credential, else a controller one.
+/// For messages a machine sends to be registered and relayed: its device credential. Never a controller one (#89): being
+/// reachable needs nothing a controller holds.
 pub fn machine_token(kind: &str, context: &str) -> String {
     if Config::is_brokered_identity() {
         // A user-level server holds no credential of its own; it uses `machine_token_async`.
         return String::new();
     }
-    make(device().or_else(controller), kind, context)
+    make(device(), kind, context)
 }
 
 /// `machine_token` for the server side: where the machine identity is brokered the service makes the token.

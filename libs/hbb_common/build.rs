@@ -25,6 +25,8 @@ fn bake_from_dotenv() {
 
 fn main() {
     bake_from_dotenv();
+    // bake_from_dotenv's rerun-if-changed turns off cargo's default (any file of the package), so name the protos too
+    println!("cargo:rerun-if-changed=protos/rendezvous.proto");
     let out_dir = format!("{}/protos", std::env::var("OUT_DIR").unwrap());
 
     std::fs::create_dir_all(&out_dir).unwrap();

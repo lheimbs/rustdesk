@@ -1,0 +1,180 @@
+diff --git a/src/common.rs b/src/common.rs
+index f7414fa..99078c7 100644
+--- a/src/common.rs
++++ b/src/common.rs
+@@ -393,10 +393,15 @@ pub fn handover_gate_init() -> ResultType<()> {
+ /// Is this token a fresh, unrevoked one of an allowed role for exactly this message? Failures are logged,
+ /// at most one line per second (the rest is counted) so that an attacker cannot flood the log.
+ pub fn handover_admit(token: &str, kind: &str, context: &str, roles: &[handover_cred::Role], from: &str) -> bool {
++    handover_admitted_role(token, kind, context, roles, from).is_some()
++}
++
++/// `handover_admit`, telling which role the token was made with.
++pub fn handover_admitted_role(token: &str, kind: &str, context: &str, roles: &[handover_cred::Role], from: &str) -> Option<handover_cred::Role> {
+     use std::sync::atomic::Ordering::Relaxed;
+-    let Some(gate) = HANDOVER_GATE.get() else { return false };
++    let Some(gate) = HANDOVER_GATE.get() else { return None };
+     match gate.check(token, kind, context, roles) {
+-        Ok(_) => true,
++        Ok(cred) => Some(cred.role),
+         Err(e) => {
+             let now = handover_cred::token::now_secs();
+             if HANDOVER_LAST_LOG.swap(now, Relaxed) != now {
+@@ -405,7 +410,7 @@ pub fn handover_admit(token: &str, kind: &str, context: &str, roles: &[handover_
+             } else {
+                 HANDOVER_SUPPRESSED.fetch_add(1, Relaxed);
+             }
+-            false
++            None
+         }
+     }
+ }
+diff --git a/src/relay_server.rs b/src/relay_server.rs
+index 5b1251e..bc518e9 100644
+--- a/src/relay_server.rs
++++ b/src/relay_server.rs
+@@ -32,6 +32,7 @@ type Usage = (usize, usize, usize, usize);
+ 
+ lazy_static::lazy_static! {
+     static ref PEERS: Mutex<HashMap<String, Box<dyn StreamTrait>>> = Default::default();
++    static ref HANDOVER_WAITING_ROLES: Mutex<HashMap<String, handover_cred::Role>> = Default::default();
+     static ref USAGE: RwLock<HashMap<String, Usage>> = Default::default();
+     static ref BLACKLIST: RwLock<HashSet<String>> = Default::default();
+     static ref BLOCKLIST: RwLock<HashSet<String>> = Default::default();
+@@ -466,11 +467,18 @@ async fn make_pair_(stream: impl StreamTrait, addr: SocketAddr, key: &str, limit
+     if let Ok(Some(Ok(bytes))) = timeout(30_000, stream.recv()).await {
+         if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(&bytes) {
+             if let Some(rendezvous_message::Union::RequestRelay(rf)) = msg_in.union {
+-                if !crate::common::handover_admit(&rf.licence_key, "relay", &rf.uuid, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) {
++                let Some(role) = crate::common::handover_admitted_role(&rf.licence_key, "relay", &rf.uuid, &[handover_cred::Role::Device, handover_cred::Role::Controller], &addr.to_string()) else {
+                     return;
+-                }
++                };
+                 if !rf.uuid.is_empty() {
+                     let mut peer = PEERS.lock().await.remove(&rf.uuid);
++                    let waiting_role = HANDOVER_WAITING_ROLES.lock().await.remove(&rf.uuid);
++                    // Handover (#80): a relay session always has a controller on one end, so the shared device
++                    // credential alone cannot use this relay
++                    if peer.is_some() && role != handover_cred::Role::Controller && waiting_role != Some(handover_cred::Role::Controller) {
++                        log::warn!("Relay request {} from {} refused: no controller in the pair", rf.uuid, addr);
++                        return;
++                    }
+                     if let Some(peer) = peer.as_mut() {
+                         log::info!("Relayrequest {} from {} got paired", rf.uuid, addr);
+                         let id = format!("{}:{}", addr.ip(), addr.port());
+@@ -490,8 +498,10 @@ async fn make_pair_(stream: impl StreamTrait, addr: SocketAddr, key: &str, limit
+                     } else {
+                         log::info!("New relay request {} from {}", rf.uuid, addr);
+                         PEERS.lock().await.insert(rf.uuid.clone(), Box::new(stream));
++                        HANDOVER_WAITING_ROLES.lock().await.insert(rf.uuid.clone(), role);
+                         sleep(30.).await;
+                         PEERS.lock().await.remove(&rf.uuid);
++                        HANDOVER_WAITING_ROLES.lock().await.remove(&rf.uuid);
+                     }
+                 }
+             }
+diff --git a/src/rendezvous_server.rs b/src/rendezvous_server.rs
+index a8a00b8..0f3b312 100644
+--- a/src/rendezvous_server.rs
++++ b/src/rendezvous_server.rs
+@@ -395,7 +395,10 @@ impl RendezvousServer {
+                             (true, false)
+                         } else {
+                             if peer.uuid == rk.uuid {
+-                                if peer.info.ip != ip && peer.pk != rk.pk {
++                                // Handover (#80): the key of a registered id never changes, from any address; whoever
++                                // holds the shared device credential could replace it otherwise. A reinstalled machine
++                                // is removed from the database by the owner first.
++                                if !peer.pk.is_empty() && peer.pk != rk.pk {
+                                     log::warn!(
+                                         "Peer {} ip/pk mismatch: {}/{:?} vs {}/{:?}",
+                                         id,
+@@ -539,6 +542,8 @@ impl RendezvousServer {
+                     if let Some(peer) = self.pm.get_in_memory(&rf.id).await {
+                         let mut msg_out = RendezvousMessage::new();
+                         rf.socket_addr = AddrMangle::encode(addr).into();
++                        // Handover (#69): never a relay the controller named
++                        rf.relay_server = self.get_relay_server(addr.ip(), addr.ip());
+                         msg_out.set_request_relay(rf);
+                         let peer_addr = peer.read().await.socket_addr;
+                         self.tx.send(Data::Msg(msg_out.into(), peer_addr)).ok();
+@@ -561,7 +566,8 @@ impl RendezvousServer {
+                         if self.is_lan(addr_b) {
+                             // https://github.com/rustdesk/rustdesk-server/issues/24
+                             rr.relay_server = self.inner.local_ip.clone();
+-                        } else if rr.relay_server == self.inner.local_ip {
++                        } else {
++                            // Handover (#82): the relay is hbbs's choice, not the sender's
+                             rr.relay_server = self.get_relay_server(addr.ip(), addr_b.ip());
+                         }
+                     }
+@@ -663,6 +669,10 @@ impl RendezvousServer {
+     ) -> ResultType<()> {
+         // punch hole sent from B, tell A that B is ready to be connected
+         let addr_a = AddrMangle::decode(&phs.socket_addr);
++        if !self.is_registered_address_of(&phs.id, addr).await {
++            log::warn!("Handover: punch hole sent for {} from {}, not its registered address; dropped", phs.id, addr);
++            return Ok(());
++        }
+         log::debug!(
+             "{} punch hole response to {:?} from {:?}",
+             if socket.is_none() { "TCP" } else { "UDP" },
+@@ -673,7 +683,7 @@ impl RendezvousServer {
+         let mut p = PunchHoleResponse {
+             socket_addr: AddrMangle::encode(addr).into(),
+             pk: self.get_pk(&phs.version, phs.id).await,
+-            relay_server: phs.relay_server.clone(),
++            relay_server: self.get_relay_server(addr.ip(), addr_a.ip()),
+             ..Default::default()
+         };
+         if let Ok(t) = phs.nat_type.enum_value() {
+@@ -688,6 +698,17 @@ impl RendezvousServer {
+         Ok(())
+     }
+ 
++    /// Handover (#82): messages a machine sends about itself come from the address it registered from (its key is pinned).
++    async fn is_registered_address_of(&self, id: &str, addr: SocketAddr) -> bool {
++        match self.pm.get_in_memory(id).await {
++            Some(peer) => {
++                let peer = peer.read().await;
++                !peer.pk.is_empty() && try_into_v4(peer.socket_addr).ip() == try_into_v4(addr).ip()
++            }
++            None => false,
++        }
++    }
++
+     #[inline]
+     async fn handle_local_addr<'a>(
+         &mut self,
+@@ -697,6 +718,10 @@ impl RendezvousServer {
+     ) -> ResultType<()> {
+         // relay local addrs of B to A
+         let addr_a = AddrMangle::decode(&la.socket_addr);
++        if !self.is_registered_address_of(&la.id, addr).await {
++            log::warn!("Handover: local address for {} from {}, not its registered address; dropped", la.id, addr);
++            return Ok(());
++        }
+         log::debug!(
+             "{} local addrs response to {:?} from {:?}",
+             if socket.is_none() { "TCP" } else { "UDP" },
+@@ -707,7 +732,7 @@ impl RendezvousServer {
+         let mut p = PunchHoleResponse {
+             socket_addr: la.local_addr.clone(),
+             pk: self.get_pk(&la.version, la.id).await,
+-            relay_server: la.relay_server,
++            relay_server: self.get_relay_server(addr.ip(), addr_a.ip()),
+             ..Default::default()
+         };
+         p.set_is_local(true);
+@@ -1171,6 +1196,11 @@ impl RendezvousServer {
+                             stream.send(&msg_out).await.ok();
+                         }
+                         Some(rendezvous_message::Union::OnlineRequest(or)) => {
++                            // Handover (#81): who is online is for controllers only
++                            let context = format!("{}\n{}", or.id, or.peers.join("\n"));
++                            if !crate::common::handover_admit(&or.licence_key, "online", &context, &[handover_cred::Role::Controller], &addr.to_string()) {
++                                return;
++                            }
+                             allow_err!(rs.handle_online_request(&mut stream, or.peers).await);
+                         }
+                         _ => {}

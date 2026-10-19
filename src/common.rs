@@ -981,6 +981,16 @@ pub fn increase_port<T: std::string::ToString>(host: T, offset: i32) -> String {
     hbb_common::socket_client::increase_port(host, offset)
 }
 
+/// Handover (#69, #82): a relay address in a rendezvous message is never dialled, it could point anywhere (and hbbs may send
+/// none at all). The relay is the configured one or the rendezvous server's next port, as on the controlled side.
+pub fn trusted_relay_server(rendezvous_server: &str) -> String {
+    let configured = Config::get_option("relay-server");
+    if !configured.is_empty() {
+        return configured;
+    }
+    increase_port(rendezvous_server, 1)
+}
+
 pub const POSTFIX_SERVICE: &'static str = "_service";
 
 #[inline]
@@ -1563,6 +1573,25 @@ pub fn decode_id_pk_dtls(
     }
 }
 
+/// How far a machine's signed handshake may be from the controller's clock. Both are within the admission token window
+/// (10 minutes) of the rendezvous server's clock, or they could not use it.
+pub const ID_PK_MAX_AGE_SECS: u64 = 1800;
+
+/// `decode_id_pk_dtls` for a machine's handshake: also refuses one signed long ago or far ahead (#83).
+pub fn decode_id_pk_fresh(
+    signed: &[u8],
+    key: &sign::PublicKey,
+    now_secs: u64,
+) -> ResultType<(String, [u8; 32], String, u32)> {
+    let res = IdPk::parse_from_bytes(
+        &sign::verify(signed, key).map_err(|_| anyhow!("Signature mismatch"))?,
+    )?;
+    if res.signed_at.abs_diff(now_secs) > ID_PK_MAX_AGE_SECS {
+        bail!("the machine's handshake is not current (signed at {}, now {})", res.signed_at, now_secs);
+    }
+    decode_id_pk_dtls(signed, key)
+}
+
 /// Whether the DTLS fingerprint a WebRTC peer signed into its identity is the one of the channel
 /// actually negotiated. An empty signed value binds nothing: on a WebRTC channel it is either a
 /// peer that could not sign one or a rendezvous/relay that stripped it, and both fail closed.
@@ -2083,6 +2112,11 @@ mod tests {
         time::{interval, interval_at, sleep, Duration, Instant, Interval},
     };
     use std::collections::HashSet;
+
+    #[test]
+    fn a_relay_named_in_a_rendezvous_message_is_not_dialled() {
+        assert_eq!(super::trusted_relay_server("rs.example:21116"), "rs.example:21117");
+    }
 
     #[test]
     fn a_cursor_content_id_fits_a_web_client_number() {

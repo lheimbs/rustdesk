@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
-    create_symmetric_key_msg, decode_id_pk, decode_id_pk_dtls, dtls_fingerprint_bound, get_rs_pk,
+    create_symmetric_key_msg, decode_id_pk, dtls_fingerprint_bound, get_rs_pk,
     is_keyboard_mode_supported,
     kcp_stream::KcpStream,
     secure_tcp, secure_tcp_required,
@@ -985,7 +985,7 @@ impl Client {
                             peer_nat_type = ph.nat_type();
                             is_local = ph.is_local();
                             signed_id_pk = ph.pk.into();
-                            relay_server = ph.relay_server;
+                            relay_server = crate::trusted_relay_server(&rendezvous_server);
                             peer_addr = AddrMangle::decode(&ph.socket_addr);
                             feedback = ph.feedback;
                             webrtc_sdp_answer = ph.webrtc_sdp_answer;
@@ -1085,11 +1085,11 @@ impl Client {
                         // Keep relay_server for a WebRTC secure-failure fallback: request_relay
                         // coordinates a FRESH uuid via the rendezvous server, so it works even if
                         // the raced create_relay already consumed the original uuid pairing.
-                        let relay_server_rr = rr.relay_server.clone();
+                        let relay_server_rr = crate::trusted_relay_server(&rendezvous_server);
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
-                            rr.relay_server,
+                            relay_server_rr.clone(),
                             &key,
                             conn_type,
                             my_addr.is_ipv4(),
@@ -1659,7 +1659,7 @@ impl Client {
                 if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
                     if let Some(message::Union::SignedId(si)) = msg_in.union {
                         if let Ok((id, their_pk_b, signed_fp, kx_version)) =
-                            decode_id_pk_dtls(&si.id, &sign_pk)
+                            crate::common::decode_id_pk_fresh(&si.id, &sign_pk, hbb_common::get_time() as u64 / 1000)
                         {
                             if id == peer_id {
                                 // WebRTC only: bind the DTLS channel to the verified peer identity.
@@ -1807,7 +1807,8 @@ impl Client {
         .with_context(|| "Failed to connect to relay server")?;
         let mut msg_out = RendezvousMessage::new();
         msg_out.set_request_relay(RequestRelay {
-            licence_key: crate::admission::machine_token("relay", &uuid),
+            // Handover (#80): hbbr pairs only a controller with a machine
+            licence_key: crate::admission::controller_token("relay", &uuid),
             id: peer.to_owned(),
             uuid,
             conn_type: conn_type.into(),
@@ -2802,6 +2803,8 @@ struct ConnToken {
 #[derive(Default)]
 pub struct LoginConfigHandler {
     id: String,
+    /// `Stream::session_binding` of the connection the login goes over (#72).
+    pub session_binding: Vec<u8>,
     pub conn_type: ConnType,
     pub is_terminal_admin: bool,
     hash: Hash,
@@ -3828,7 +3831,7 @@ impl LoginConfigHandler {
             avatar,
             ..Default::default()
         };
-        crate::controller_auth::attach(&mut lr, &self.hash);
+        crate::controller_auth::attach(&mut lr, &self.hash, &self.session_binding);
         if let Some(token) =
             crate::server::elevation_grant::resume_token(&self.resume_blob, &self.hash.challenge, &lr.my_id)
         {
@@ -4588,6 +4591,8 @@ pub async fn handle_hash(
     peer: &mut Stream,
 ) -> bool {
     lc.write().unwrap().hash = hash.clone();
+    let session_binding = peer.session_binding().await;
+    lc.write().unwrap().session_binding = session_binding;
     // Take care of password application order
 
     // switch_uuid
@@ -5295,8 +5300,11 @@ pub mod peer_online {
         timeout: std::time::Duration,
     ) -> ResultType<(Vec<String>, Vec<String>)> {
         let mut msg_out = RendezvousMessage::new();
+        let id = Config::get_id();
         msg_out.set_online_request(OnlineRequest {
-            id: Config::get_id(),
+            // Handover (#81): hbbs answers controllers only
+            licence_key: crate::admission::controller_token("online", &format!("{}\n{}", id, ids.join("\n"))),
+            id,
             peers: ids.clone(),
             ..Default::default()
         });
@@ -5828,6 +5836,7 @@ mod kx_tests {
                 id: PEER_ID.to_owned(),
                 pk: pk.to_vec().into(),
                 kx_version,
+                signed_at: hbb_common::get_time() as u64 / 1000,
                 ..Default::default()
             }
             .write_to_bytes()

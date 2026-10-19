@@ -27,6 +27,8 @@ const INSTALL_HANDOFF_HASH_MISMATCH_EXIT_CODE: u32 = 0x5253_0004;
 const BATCH_CODE_PAGE_FAILURE_EXIT_CODE: u32 = 0x5253_0005;
 const BATCH_OUTPUT_DIRECTORY_EXISTS_EXIT_CODE: u32 = 0x5253_0006;
 const BATCH_OUTPUT_DIRECTORY_CREATE_FAILURE_EXIT_CODE: u32 = 0x5253_0007;
+const INSTALL_COPY_FAILURE_EXIT_CODE: u32 = 0x5253_0008;
+const INSTALL_COPY_HASH_MISMATCH_EXIT_CODE: u32 = 0x5253_0009;
 const SHA256_HASH_LENGTH: usize = 32;
 
 type BatchHash = [u8; SHA256_HASH_LENGTH];
@@ -92,6 +94,64 @@ fn install_hash_pattern(hash: &BatchHash) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect::<Vec<_>>()
         .join(" *")
+}
+
+/// Handover (#73): the elevated copy into the install directory. The source directory belongs to the user, so it takes
+/// exactly the files that were there, with these contents, when the script was written (before the UAC prompt): each is
+/// copied into the protected runner directory, checked there, and only that checked copy goes on to `dst`.
+pub(super) fn verified_copy_commands(src_dir: &Path, dst: &str) -> ResultType<String> {
+    let certutil = get_system_executable(CERTUTIL_RELATIVE_PATH)?;
+    let findstr = get_system_executable(FINDSTR_RELATIVE_PATH)?;
+    let (certutil, findstr) = (path_for_cmd_environment(&certutil)?, path_for_cmd_environment(&findstr)?);
+    let src = path_for_cmd_environment(src_dir)?;
+    let mut files = vec![];
+    collect_files(src_dir, Path::new(""), &mut files)?;
+    if files.is_empty() {
+        bail!("Nothing to install in {:?}", src_dir);
+    }
+    let stage = "%RUSTDESK_OUTPUT_DIR%\\stage";
+    let hashes = "%RUSTDESK_OUTPUT_DIR%\\stage.hash";
+    let mut out = format!("md \"{stage}\" || exit /b {INSTALL_COPY_FAILURE_EXIT_CODE}\r\n");
+    let mut made = std::collections::HashSet::new();
+    for (rel, hash) in files {
+        let rel = rel
+            .to_str()
+            .filter(|r| r.chars().all(|c| c.is_ascii_alphanumeric() || " ._-+@()[]~,=#\\".contains(c)))
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("Installer file name unsafe for cmd.exe: {:?}", rel))?;
+        if let Some((parent, _)) = rel.rsplit_once('\\') {
+            let mut sub = String::new();
+            for part in parent.split('\\') {
+                sub = if sub.is_empty() { part.to_owned() } else { format!("{sub}\\{part}") };
+                if made.insert(sub.clone()) {
+                    out += &format!("md \"{stage}\\{sub}\" || exit /b {INSTALL_COPY_FAILURE_EXIT_CODE}\r\n");
+                }
+            }
+        }
+        out += &format!(
+            "copy /Y \"{src}\\{rel}\" \"{stage}\\{rel}\" > nul || exit /b {INSTALL_COPY_FAILURE_EXIT_CODE}\r\n\
+             \"{certutil}\" -hashfile \"{stage}\\{rel}\" SHA256 > \"{hashes}\" || exit /b {INSTALL_COPY_HASH_MISMATCH_EXIT_CODE}\r\n\
+             \"{findstr}\" /R /I /X /C:\"{}\" \"{hashes}\" > nul || exit /b {INSTALL_COPY_HASH_MISMATCH_EXIT_CODE}\r\n",
+            install_hash_pattern(&hash)
+        );
+    }
+    out += &format!("XCOPY \"{stage}\" \"{dst}\" /Y /E /H /C /I /K /R /Z\r\n");
+    Ok(out)
+}
+
+fn collect_files(base: &Path, rel: &Path, out: &mut Vec<(PathBuf, BatchHash)>) -> ResultType<()> {
+    for entry in fs::read_dir(base.join(rel))? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let rel = rel.join(entry.file_name());
+        if kind.is_dir() {
+            collect_files(base, &rel, out)?;
+        } else if kind.is_file() {
+            out.push((rel.clone(), Sha256::digest(fs::read(base.join(&rel))?).into()));
+        } else {
+            bail!("Installer source holds a link: {:?}", rel);
+        }
+    }
+    Ok(())
 }
 
 fn verified_install_bootstrap(
@@ -168,6 +228,8 @@ fn elevated_install_failure_reason(exit_code: u32) -> &'static str {
             "failed to create the installer output directory"
         }
         BATCH_SHORTCUT_DECODE_FAILURE_EXIT_CODE => "failed to decode an embedded shortcut",
+        INSTALL_COPY_FAILURE_EXIT_CODE => "failed to copy the program files",
+        INSTALL_COPY_HASH_MISMATCH_EXIT_CODE => "a program file changed before the installation (hash mismatch)",
         _ => "installer command failed",
     }
 }
@@ -220,6 +282,43 @@ mod tests {
         std::fs::remove_file(&marker).expect("test marker should be removed");
         assert_replaced_install_script_is_rejected(&script, &runner_dir, &marker);
         std::fs::remove_dir(runner_dir).expect("runner directory should be empty");
+    }
+
+    #[test]
+    fn the_install_copy_takes_only_the_files_it_listed_unchanged() {
+        let base = std::env::temp_dir().join(format!("handover_copy_{}", uuid::Uuid::new_v4().simple()));
+        let (src, out, dst) = (base.join("src"), base.join("out"), base.join("dst"));
+        std::fs::create_dir_all(src.join("data")).unwrap();
+        std::fs::write(src.join("Handover.exe"), b"exe").unwrap();
+        std::fs::write(src.join("data").join("a.dat"), b"data").unwrap();
+        let run = |commands: &str| {
+            std::fs::remove_dir_all(&out).ok();
+            std::fs::create_dir_all(&out).unwrap();
+            let bat = base.join("copy.bat");
+            std::fs::write(&bat, format!("@echo off\r\n{commands}exit /b 0\r\n")).unwrap();
+            let cmd = get_system_executable(CMD_RELATIVE_PATH).unwrap();
+            std::process::Command::new(cmd)
+                .env("RUSTDESK_OUTPUT_DIR", &out)
+                .arg("/D")
+                .arg("/C")
+                .arg(&bat)
+                .creation_flags(Threading::CREATE_NO_WINDOW.0)
+                .status()
+                .unwrap()
+                .code()
+        };
+        let commands = verified_copy_commands(&src, dst.to_str().unwrap()).unwrap();
+        // planted while the prompt is open: never copied
+        std::fs::write(src.join("planted.dll"), b"x").unwrap();
+        assert_eq!(run(&commands), Some(0));
+        assert!(dst.join("data").join("a.dat").exists());
+        assert!(!dst.join("planted.dll").exists());
+        // changed while the prompt is open: refused
+        std::fs::remove_dir_all(&dst).ok();
+        std::fs::write(src.join("Handover.exe"), b"evil").unwrap();
+        assert_eq!(run(&commands), Some(INSTALL_COPY_HASH_MISMATCH_EXIT_CODE as i32));
+        assert!(!dst.join("Handover.exe").exists());
+        std::fs::remove_dir_all(&base).ok();
     }
 
     fn assert_native_handoff_structure(

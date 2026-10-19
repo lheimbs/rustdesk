@@ -25,6 +25,7 @@ const MAX_FINGERPRINT_LEN: usize = 200;
 const MAX_UUID_LEN: usize = 96;
 const MAX_KIND_LEN: usize = 16;
 const MAX_CONTEXT_LEN: usize = 512;
+const MAX_SIGNED_AT_SKEW: u64 = 60;
 
 /// A burst the busiest legitimate moment needs, then a rate far above what a machine ever sends (a
 /// registration every few seconds plus a token per connection attempt).
@@ -94,6 +95,10 @@ fn check_id_pk(bytes: &[u8], own_id: &str) -> Result<(), &'static str> {
     }
     if msg.kx_version > KX_VERSION_LATEST {
         return Err("unknown key exchange version");
+    }
+    // the service and the server share a clock: only a handshake of right now is signed (#83)
+    if msg.signed_at.abs_diff(handover_cred::token::now_secs()) > MAX_SIGNED_AT_SKEW {
+        return Err("identity message is not of now");
     }
     if msg.dtls_fingerprint.len() > MAX_FINGERPRINT_LEN
         || !msg
@@ -281,6 +286,7 @@ mod tests {
             id: ID.to_owned(),
             pk: vec![1u8; box_::PUBLICKEYBYTES].into(),
             kx_version: KX_VERSION_LATEST,
+            signed_at: handover_cred::token::now_secs(),
             ..Default::default()
         }
     }

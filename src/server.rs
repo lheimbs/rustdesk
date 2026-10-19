@@ -287,6 +287,7 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
             pk: Bytes::from(our_pk_b.0.to_vec()),
             dtls_fingerprint,
             kx_version: advertised,
+            signed_at: hbb_common::get_time() as u64 / 1000,
             ..Default::default()
         }
         .write_to_bytes()

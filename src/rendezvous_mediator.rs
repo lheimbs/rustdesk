@@ -421,7 +421,13 @@ impl RendezvousMediator {
             select! {
                 n = socket.next() => {
                     match n {
-                        Some(Ok((bytes, _))) => {
+                        Some(Ok((bytes, from))) => {
+                            // Handover (#69): the socket is not connected, anyone can send to it; only the rendezvous
+                            // server may (when its address is known, i.e. not behind a proxy).
+                            if matches!(addr, TargetAddr::Ip(_)) && from != addr {
+                                hbb_common::throttled_log!(Duration::from_secs(60), warn, "dropped a rendezvous datagram from {:?}", from);
+                                continue;
+                            }
                             if let Ok(msg) = Message::parse_from_bytes(&bytes) {
                                 rz.handle_resp(msg.union, Sink::Framed(&mut socket, &addr), &server, &mut update_latency).await?;
                             } else {
@@ -678,7 +684,7 @@ impl RendezvousMediator {
 
         self.create_relay(
             rr.socket_addr.into(),
-            rr.relay_server,
+            self.get_relay_server(rr.relay_server),
             rr.uuid,
             server,
             rr.secure,
@@ -1336,9 +1342,8 @@ impl RendezvousMediator {
 
     fn get_relay_server(&self, provided_by_rendezvous_server: String) -> String {
         let mut relay_server = Config::get_option("relay-server");
-        if relay_server.is_empty() {
-            relay_server = provided_by_rendezvous_server;
-        }
+        // Handover (#69): never the address in the message, it may not even come from the rendezvous server.
+        let _ = provided_by_rendezvous_server;
         if relay_server.is_empty() {
             relay_server = crate::increase_port(&self.host, 1);
         }

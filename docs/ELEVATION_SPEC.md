@@ -39,7 +39,8 @@ Functional
 * **F1** A new session after Accept is tier 0. A controller cannot start higher.
 * **F2** At tier 0 the lock screen, UAC prompts and the sign-in screen are not visible to the controller (a clear "protected screen" notice instead) and no controller input reaches them. A locked session counts as protected by its session lock state: the lock-screen splash is drawn on the normal desktop and a user-level capture would otherwise show it (measured, plan 2s).
 * **F3** The controller UI has a "Request administrator access" action (toolbar) and shows the state: none, requested, granted (with time left), denied, expired, revoked.
-* **F4** The controlled side shows a prompt for each request (controller name, what it allows, time limit, Allow / Deny, optional "Keep this controller connected through sign-out"), and on Allow triggers the real UAC prompt. A standard user is asked by Windows for an administrator password; that is the authentication.
+* **F4** The controlled side shows a prompt for each request (controller name, what it allows, time limit, Allow / Deny, optional "Keep this controller connected through sign-out"), and on Allow triggers the real UAC prompt. (Superseded by docs/APPROVAL_SPEC.md, #89: only an administrator is ever asked; a machine
+  whose signed-in user is a standard user refuses the connection before any prompt.)
 * **F5** After the proof succeeds the session becomes tier 1: the controller sees and drives UAC prompts, the lock screen and elevated windows.
 * **F6** Tier 1 ends on: controller disconnect, controller "drop", local "stop administrator access", time limit (default 30 minutes, configurable at build time), sign-out or user switch of the granting user, service stop. The session continues at tier 0 where the connection survives.
 * **F7** Connection survival: sign-out and user switch end the user-level `--server`. With a valid resume grant the controller reconnects automatically (existing reconnect behaviour) to the sign-in server without a click or password, sees the sign-in screen, and can type there (this is what "keep connected" means and the prompt says so). When the **same user** signs in again the connection continues at tier 0. When a **different user** signs in the resume grant is void and a new local Accept is needed.
@@ -156,7 +157,7 @@ Unattended access, auto-accept without a prior local click, macOS/Linux controll
 | T-09 | Request, nobody answers for 60 s | "expired"; no UAC prompt left behind |
 | T-10 | Request, Allow, UAC answered Yes (admin user) | Tier 1: controller sees UAC and lock screen, can answer a later UAC prompt, input reaches an elevated window |
 | T-11 | Request, Allow, UAC answered No/cancelled | Stays tier 0, controller sees "denied" |
-| T-12 | Standard (non-admin) user: Allow, UAC asks for administrator password | Works with a valid admin password; wrong password keeps tier 0 |
+| T-12 | Standard (non-admin) user (superseded by APPROVAL_SPEC.md, #89) | The connection is refused ("Only an administrator can allow this connection"); no prompt |
 | T-13 | A non-elevated local process sends a forged proof to the service pipe | Refused, logged |
 | T-14 | Replay of a used nonce; proof after expiry; proof for a different connection | Refused |
 | T-15 | UAC disabled on the machine | Elevation refused with a clear message |

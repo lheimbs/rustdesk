@@ -45,6 +45,10 @@ cp -r "$HERE/../libs/handover_cred/Cargo.toml" "$HERE/../libs/handover_cred/src"
 rm -rf "$SRC/libs/handover_cred/src/bin"
 git -C "$SRC" apply "$HERE/patches/0004-handover-admission.patch"
 git -C "$SRC/libs/hbb_common" apply "$HERE/patches/0005-hbb_common-admission-fields.patch"
+# Security review 2026-10-18 (#62): pinned machine keys, routing only from a machine's registered address, the relay chosen
+# by hbbs, a controller on every relay pair, and an admission token for OnlineRequest.
+git -C "$SRC" apply "$HERE/patches/0006-handover-review-fixes.patch"
+git -C "$SRC/libs/hbb_common" apply "$HERE/patches/0007-hbb_common-online-request-token.patch"
 
 (cd "$SRC" && cargo +"$TOOLCHAIN" build --release --locked)
 
