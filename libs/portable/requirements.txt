@@ -1,1 +1,5 @@
-brotli
+# Pinned by hash (#88): installed with `pip install --require-hashes -r requirements.txt`.
+# Windows x64 wheels of Brotli 1.2.0 for CPython 3.12 and 3.13 (hashes from PyPI).
+brotli==1.2.0 \
+    --hash=sha256:b35c13ce241abdd44cb8ca70683f20c0c079728a36a996297adb5334adfc1c44 \
+    --hash=sha256:b63daa43d82f0cdabf98dee215b375b4058cce72871fd07934f179885aad16e8

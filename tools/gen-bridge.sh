@@ -1,7 +1,7 @@
 #!/bin/bash
 # Generate the flutter_rust_bridge files (git-ignored) the Flutter build needs.
 #
-# Same approach as .github/workflows/bridge.yml (codegen 1.80.1, bridge generated with Flutter 3.22.3,
+# Same approach as .github/upstream-workflows/bridge.yml (upstream CI, not run here) (codegen 1.80.1, bridge generated with Flutter 3.22.3,
 # app built with Flutter 3.24.5) plus fixes for a libclang newer than the one CI uses: with libclang 22
 # the pinned ffigen emits `typedef bool = ...`, `Pointer<bool>` parameters and a wrong
 # `store_dart_post_cobject` type. The fixes below make the generated Dart compile; they are no-ops
@@ -14,10 +14,20 @@ cd "$(dirname "$0")/.."
 export PATH=$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$PATH
 F322=$(mise where flutter@3.22.3)/bin
 
-cp flutter/pubspec.yaml /tmp/handover-pubspec.yaml.orig
-trap 'cp /tmp/handover-pubspec.yaml.orig flutter/pubspec.yaml; git checkout -q flutter/pubspec.lock' EXIT
+# A private temp directory (#88), and the codegen's own dependency resolution pinned in tools/gen-bridge.pubspec.lock:
+# the generator runs build_runner and its plugins, so they must not float. After a change to flutter/pubspec.yaml,
+# refresh it with GEN_BRIDGE_UPDATE_LOCK=1 and review the diff.
+TMP=$(mktemp -d)
+cp flutter/pubspec.yaml "$TMP/pubspec.yaml.orig"
+trap 'cp "$TMP/pubspec.yaml.orig" flutter/pubspec.yaml; git checkout -q flutter/pubspec.lock; rm -rf "$TMP"' EXIT
 sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' flutter/pubspec.yaml
-(cd flutter && PATH=$F322:$PATH flutter pub get)
+if [ -n "${GEN_BRIDGE_UPDATE_LOCK:-}" ]; then
+  (cd flutter && PATH=$F322:$PATH flutter pub get)
+  cp flutter/pubspec.lock tools/gen-bridge.pubspec.lock
+else
+  cp tools/gen-bridge.pubspec.lock flutter/pubspec.lock
+  (cd flutter && PATH=$F322:$PATH flutter pub get --enforce-lockfile)
+fi
 PATH=$F322:$PATH flutter_rust_bridge_codegen --llvm-compiler-opts=-std=gnu11 \
   --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart \
   --c-output ./flutter/macos/Runner/bridge_generated.h

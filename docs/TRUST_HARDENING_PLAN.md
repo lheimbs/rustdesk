@@ -313,7 +313,7 @@ Two fresh copies of the checkout in different directories (no `target/`, no `.en
 
 Unit tests: 3 new ones for the decision (`login_gate`), the 11 handshake tests and the earlier guards all pass. The Linux bundle and the Windows installer were rebuilt from this commit; the egress scenarios and the strings scan were repeated on the new Linux bundle (section 2o method).
 
-**Limits.** The one-time password has 6 characters (36^6 possibilities) and is guarded by the existing per-address failure limit and rotation after repeated misses; a controller holding the server key can still make a few guesses per minute until the limit applies. The password is read out by the person at the machine, so the click is still required on top.
+**Limits.** The one-time password has 6 characters from a 32-character alphabet (32^6, about 10^9 possibilities; corrected 2026-10-19, #86) and is guarded by the existing per-address failure limit and rotation after repeated misses; a controller holding the server key can still make a few guesses per minute until the limit applies. The password is read out by the person at the machine, so the click is still required on top.
 
 ### 2q. Admission: only controllers and machines the owner signed (2026-10-10)
 

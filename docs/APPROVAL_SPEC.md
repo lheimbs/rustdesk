@@ -53,9 +53,10 @@ Same shape as E9 `--elevation-proof`, a new mode `--approval-proof <nonce>`:
 
 ## 6. Lite client
 
-* Cargo feature `lite` and a Flutter compile-time flag. Without the feature the connect path (`client.rs` start, `Data::` input,
-  address book, connection page, file-transfer client, controller token handling) is not compiled; the binary has no code that can
-  open an outgoing peer session. Egress scenario: only hbbs/hbbr.
+* Cargo feature `lite` and a Flutter compile-time flag. With the feature the connect path (`client.rs` start, controller token
+  handling, the connection page) is switched off by compile-time constants (`cfg!(feature = "lite")`): the code is still in the
+  binary but cannot run, so the binary cannot open an outgoing peer session. (Corrected 2026-10-19, #89: an earlier version said
+  "not compiled".) Egress scenario: only hbbs/hbbr.
 * The installer ships the same service; `AGENTS.md` layout lists the `cfg(feature = "lite")` boundaries.
 
 On Linux the lite build is the controlled side: the full Linux build is outgoing-only (`is_outgoing_only()` is true on Linux without the feature), so it
@@ -83,3 +84,45 @@ never starts a server. Plan section 2ae.
    active user changes.
 4. **Two sessions:** the connection goes to the active console session only.
 5. **No setting keeps the old "click authorises" behaviour.**
+6. **Two-factor authentication is not asked on the approval path** (#89): an approved login is authorised by the administrator's
+   proof; `require_2fa` is dropped there. The proof (UAC / sudo password, typed at the machine) is the second factor.
+
+## 9. Security review 2026-10-18 (#62): changes and known limits
+
+Changes (story #62, issues #63-#89):
+
+* Accept starts the proof only for the card this very login earned (one-time password right, approver check passed), once, and
+  never after authorization; a second login request while the card is up is ignored; switch sides is refused on the controlled
+  side; permissions in rendezvous messages are ignored; never-available permissions cannot be switched on from the CM.
+* Linux: clients of the service sockets accept only a root server; the proof runs `sudo -k` and always asks; any `NOPASSWD` or
+  `!authenticate` makes the proof meaningless; root and system accounts are never approvers; the service re-checks at `Create`.
+* Windows: clients accept the service pipe only from the process the service control manager reports for the service, and the
+  CM pipe only from this program in this session and account; the CM pipe has a per-session name and a user+SYSTEM DACL; the
+  approval has its own slot in the service and ends with its connection; the installer copies only the files it listed, checked
+  by SHA-256 in a protected folder.
+* The controller's login proof covers the session (`Stream::session_binding`), and a machine's signed handshake carries the time
+  it was signed (`IdPk.signed_at`, accepted within 30 minutes).
+
+Known limits (accepted, owner to confirm):
+
+1. **The approval is enforced in the user-level `--server`.** Code running as the signed-in user can modify that process
+   (Windows: same integrity level; Linux: ptrace when `kernel.yama.ptrace_scope` is 0) and skip the gate. Such code can already
+   do anything the user can; the approval protects against remote parties, not against malware in the administrator's session.
+2. **Windows UAC level.** At the default `ConsentPromptBehaviorAdmin=5`, known auto-elevation routes elevate silently, so code
+   in the administrator's session could also produce the proof. `uac_allows_elevation` still accepts 5, because requiring
+   "Always notify" (2) would refuse every default Windows install; an owner who wants it sets UAC to "Always notify" on the
+   target machines. Decision pending (#84).
+3. **Linux `SUDO_UID`.** The service believes the `SUDO_UID` of any root process. A root process can do anything anyway.
+4. **The UAC prompt names "Windows Command Processor"**, not Handover, until the binaries are signed (#18).
+5. **Revocation of controller credentials** works at the servers (`HANDOVER_REVOKED`): every connection start needs a fresh
+   controller token checked there. A controlled machine has no list of its own (it may not fetch one). Controller credentials are
+   issued for 30 days by default and `handover-ca` records every serial in `issued.log`.
+6. **Wrong one-time passwords rotate it after ten failures**, counted for all controllers together: any credential holder can
+   force a rotation (availability, not access). The password has 6 characters of 32 (about 10^9 values).
+7. **`connections.log` is written by the user-level server** and can be changed by the user; the service's own log (root /
+   SYSTEM) records every approval and grant and is the authoritative record.
+8. **The device credential is shared by all machines.** Its holder (anyone with an installer) can register IDs that are not yet
+   registered and exhaust its own half of the servers' replay cache; it cannot change a registered machine's key, use the relay
+   without a controller, or ask who is online. Per-machine credentials would close the rest.
+9. **A UAC prompt stays open after its connection closed** (Windows cannot close the consent prompt from outside). Answering it
+   then approves nothing: the service withdrew the request with the connection (#85).
