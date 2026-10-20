@@ -2338,6 +2338,32 @@ mod test {
         assert!(std::mem::size_of::<Data>() <= 120);
     }
 
+    // #67/#68: any process can create an instance of a pipe name, so the client checks who serves it.
+    // A pipe served by this (non-service) test process is refused when it stands in for the service
+    // pipe, and accepted as a `_cm` pipe because it is served in our own session by our own account.
+    #[cfg(windows)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_windows_pipe_server_identity() {
+        let postfix = "_piperver_test";
+        let path = Config::ipc_path(&windows_session_scoped_postfix(postfix));
+        let mut endpoint = Endpoint::new(path.clone());
+        endpoint.set_security_attributes(SecurityAttributes::allow_everyone_create().unwrap());
+        let mut incoming = endpoint.incoming().expect("listener");
+        let accepted = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Some(Ok(conn)) = incoming.next().await {
+                held.push(conn);
+            }
+        });
+        let conn = connect_with_path(2000, &path).await.expect("client connect");
+        // #67: the service pipe must be served by the SCM-registered service, never by this process.
+        assert!(conn.verify_windows_pipe_server(crate::POSTFIX_SERVICE).is_err());
+        // #68: a `_cm` pipe served by this same-session, same-account process is accepted.
+        assert!(conn.verify_windows_pipe_server("_cm").is_ok());
+        drop(conn);
+        accepted.abort();
+    }
+
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn test_service_ipc_path_is_shared_across_uids() {

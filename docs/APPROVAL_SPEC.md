@@ -110,8 +110,10 @@ Known limits (accepted, owner to confirm):
    do anything the user can; the approval protects against remote parties, not against malware in the administrator's session.
 2. **Windows UAC level.** At the default `ConsentPromptBehaviorAdmin=5`, known auto-elevation routes elevate silently, so code
    in the administrator's session could also produce the proof. `uac_allows_elevation` still accepts 5, because requiring
-   "Always notify" (2) would refuse every default Windows install; an owner who wants it sets UAC to "Always notify" on the
-   target machines. Decision pending (#84).
+   "Always notify" (2) would refuse every default Windows install. Decision (#84, 2026-10-20): the code keeps accepting 5;
+   "Always notify" is required by policy (GPO/Intune, `ConsentPromptBehaviorAdmin=2`) on managed machines and audited there,
+   not enforced at connect time. Enforcing in code was rejected: the check runs in the same session as the in-session malware
+   it would defend against, so it adds no hard guarantee while breaking default installs and inviting users to disable it.
 3. **Linux `SUDO_UID`.** The service believes the `SUDO_UID` of any root process. A root process can do anything anyway.
 4. **The UAC prompt names "Windows Command Processor"**, not Handover, until the binaries are signed (#18).
 5. **Revocation of controller credentials** works at the servers (`HANDOVER_REVOKED`): every connection start needs a fresh
