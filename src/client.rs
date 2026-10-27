@@ -4887,6 +4887,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let title = "Connection Error";
         let text = err.to_string();
         let lch = self.get_lch();
+        elevation::hold_through_sign_out(&mut lch.write().unwrap());
         let (is_restarting, direct, received) = {
             let lc = lch.read().unwrap();
             (lc.is_restarting_remote_device(), lc.direct, lc.received)
