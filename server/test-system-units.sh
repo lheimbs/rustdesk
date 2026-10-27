@@ -67,6 +67,7 @@ for n in hbbs hbbr; do
   nsenter -t "$P" -m sh -c 'touch /usr/local/lib/handover-test/x 2>&1' 2>/dev/null | grep -qi "read-only\|denied" && ok "$n cannot write outside ReadWritePaths (ProtectSystem=strict)" || bad "$n could write to the program directory"
   [ "$(readlink /proc/$P/ns/mnt)" != "$(readlink /proc/1/ns/mnt)" ] && ok "$n has its own mount namespace (PrivateTmp/ProtectSystem)" || bad "$n shares the host mount namespace"
   [ "$(awk '/^CapEff/ {print $2}' /proc/$P/status)" = 0000000000000000 ] && ok "$n has no effective capabilities" || bad "$n has capabilities"
+  journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value handover-test-$n)" --no-pager 2>/dev/null | grep -q "admission: only clients with credentials signed" && ok "$n enforces admission (HANDOVER_CA_PUB from the unit)" || bad "$n did not report admission as enabled"
 done
 echo "journal (last lines, check for seccomp kills / permission errors):"
 journalctl -u handover-test-hbbs -u handover-test-hbbr --no-pager -n 6 2>/dev/null | cut -c1-160

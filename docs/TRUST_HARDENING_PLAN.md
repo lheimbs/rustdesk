@@ -270,6 +270,8 @@ Method: build the same commit several times on the Windows build host (fresh dir
 
 `server/test-system-units.sh` (root) installed the shipped units under test names and ran them as a dedicated user: **16 of 16 checks passed**. Both units active; `hbbs` runs as the dedicated user; key created with mode 600 and owned by it; a loopback source is allowed and a connection from the host's own non-loopback address is dropped by `IPAddressDeny=any` + `IPAddressAllow` (this was not effective in a user manager, so it could not be verified before); `ProtectHome` and `ProtectSystem=strict` effective for both programs; own mount namespace; no effective capabilities; no seccomp kills or permission errors in the journal. Everything was removed again (user, units, state directory, binary copy). The production unit differs only in names, paths and the allow-list taken from the deployment settings.
 
+**Re-run 2026-10-27** (units with the admission lines `HANDOVER_CA_PUB`/`HANDOVER_REVOKED`, servers with patches 0001-0007, rebuilt from the branch head: SHA-256 identical to the 2026-10-19 build): **18 of 18 checks passed**. The script now also checks that each server logged admission as enabled in this start (journal of the current invocation), so a unit whose issuer key did not reach the program fails the run. Cleanup left no user, unit, state directory or binary copy. `server/build.sh` was committed without the executable bit; fixed.
+
 ### 2n. Linux release tarball reproducibility (2026-10-08)
 
 Two fresh copies of the checkout in different directories (no `target/`, no `.env`), each built with `tools/build-linux.sh` under a 5.5 GB memory limit (about 14 min each): the `handover-linux-x64.tar.gz` archives are **byte-identical** (SHA-256 `674aacc2...f141`) and all 89 files of the unpacked bundle (the Rust library, the Flutter engine and plugin libraries, `libapp.so`, data files) have identical hashes. This needed the archive step to be deterministic (sorted entries, `SOURCE_DATE_EPOCH` mtime, root ownership, `gzip -n`). Conditions: same host toolchain and system libraries (gtk, libvpx, libyuv, aom, opus), same Flutter SDK; the server address and key are baked in, so a different server gives a different binary.
@@ -780,7 +782,7 @@ callers share (keeps FFI/Dart signatures, small diff). Regression of upstream "f
 | L Linux controller | done | #11, #24 |
 | 8 supply chain | done: pins, cargo-deny, every git dependency vendored, Flutter lock, dead crates removed; Flutter git plugins unreviewed | #19, #20, #21, #22, #34 |
 | 9 build and release | Linux and Windows scripted and bit-identical across directories on one host; signing pipeline tested, real certificate is the owner's | #23, #24, #18 |
-| 10 server | pinned commit plus patches 0001-0005; units passed 16/16 under a real system manager (re-run pending since the admission environment lines were added); admission (signed credentials) verified; 24 h soak PASS | #25, #37 |
+| 10 server | pinned commit plus patches 0001-0005; units passed 18/18 under a real system manager with the admission environment (2026-10-27, 2m); admission (signed credentials) verified; 24 h soak PASS | #25, #37 |
 | 11 acceptance | done on the final binaries (2o) | #26, #27 |
 | 12 admission by signed credentials | done, measured on the real machine and offline (2q) | #37 |
 

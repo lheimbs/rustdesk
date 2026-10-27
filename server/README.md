@@ -49,8 +49,10 @@ files, and `hbbs` answered a real controller (key exchange + database lookup) wi
 
 **Result of the run on 2026-10-07 (systemd, a dedicated user): 16 of 16 checks PASS** - units active, `hbbs` runs as the dedicated user, key created with mode 600 and owned by it, loopback allowed, a connection from a non-allowed source address dropped by the IP filter, `ProtectHome` and `ProtectSystem=strict` effective, own mount namespace, no effective capabilities, no seccomp kills in the journal; everything was removed again.
 
+**Re-run on 2026-10-27** with the admission environment lines and patches 0001-0007: **18 of 18 PASS** (the two new checks: `hbbs` and `hbbr` each report admission as enabled).
+
 `sudo server/test-system-units.sh <dir with hbbs and hbbr>` runs exactly these missing parts for real under test names (own user, `/var/lib/handover-server-test`,
-units `handover-test-*`), checks the user, key permissions, `ProtectHome`/`ProtectSystem`, empty capabilities and that a connection from a non-allowed
+units `handover-test-*`), checks the user, key permissions, `ProtectHome`/`ProtectSystem`, empty capabilities, that admission is enabled and that a connection from a non-allowed
 source address is dropped by the IP filter, and removes everything again on exit.
 
 ## Ports
