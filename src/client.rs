@@ -5140,6 +5140,7 @@ pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: b
                 && !text.to_lowercase().contains("manually")
                 && !text.to_lowercase().contains("restricted")
                 && !text.to_lowercase().contains("incoming only")
+                && !text.to_lowercase().contains("controlled-only")
                 && !text.to_lowercase().contains("not allowed")))
 }
 
@@ -5153,6 +5154,16 @@ mod retry_tests {
             "error",
             "Connection Error",
             "Incoming only mode",
+            false,
+        ));
+    }
+
+    #[test]
+    fn controlled_only_installation_is_not_retryable() {
+        assert!(!check_if_retry(
+            "error",
+            "Connection Error",
+            "This is a controlled-only installation",
             false,
         ));
     }
