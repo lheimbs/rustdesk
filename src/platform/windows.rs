@@ -1080,9 +1080,24 @@ fn session_user_is_admin(session_id: u32) -> bool {
             &mut size,
         )
     } != FALSE;
+    // With UAC off every token is TokenElevationTypeDefault (1); an administrator's is then elevated. Recognising it lets
+    // the decision name the real reason (the proof is meaningless) instead of "not an administrator".
+    let mut elevated: u32 = 0;
+    let uac_off_admin = ok
+        && kind == 1
+        && unsafe {
+            GetTokenInformation(
+                token,
+                winapi::um::winnt::TokenElevation,
+                &mut elevated as *mut _ as *mut c_void,
+                mem::size_of::<u32>() as _,
+                &mut size,
+            )
+        } != FALSE
+        && elevated != 0;
     unsafe { CloseHandle(token) };
     // TokenElevationTypeFull = 2, TokenElevationTypeLimited = 3
-    ok && (kind == 2 || kind == 3)
+    ok && (kind == 2 || kind == 3) || uac_off_admin
 }
 
 /// A4: is the user this process runs as an administrator (UAC split token or elevated)? For the display of the one-time password only.
