@@ -4887,6 +4887,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let title = "Connection Error";
         let text = err.to_string();
         let lch = self.get_lch();
+        elevation::hold_through_sign_out(&mut lch.write().unwrap());
         let (is_restarting, direct, received) = {
             let lc = lch.read().unwrap();
             (lc.is_restarting_remote_device(), lc.direct, lc.received)
@@ -5139,6 +5140,7 @@ pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: b
                 && !text.to_lowercase().contains("manually")
                 && !text.to_lowercase().contains("restricted")
                 && !text.to_lowercase().contains("incoming only")
+                && !text.to_lowercase().contains("controlled-only")
                 && !text.to_lowercase().contains("not allowed")))
 }
 
@@ -5152,6 +5154,16 @@ mod retry_tests {
             "error",
             "Connection Error",
             "Incoming only mode",
+            false,
+        ));
+    }
+
+    #[test]
+    fn controlled_only_installation_is_not_retryable() {
+        assert!(!check_if_retry(
+            "error",
+            "Connection Error",
+            "This is a controlled-only installation",
             false,
         ));
     }

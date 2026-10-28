@@ -631,6 +631,12 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
         peer_is_system,
         peer_is_elevated,
     ) = stream.server_authorization_status();
+    // A standard user's server cannot open the SYSTEM service's token, so the checks above fail for the service itself
+    // and its close (user switch) was refused; the service control manager names the service's process instead, as in
+    // `verify_windows_pipe_server`. A user cannot register a service.
+    if !authorized && peer_pid.is_some() && peer_pid == crate::platform::windows::service_process_id() {
+        return true;
+    }
     if !authorized {
         log_rejected_windows_ipc_connection(
             postfix,

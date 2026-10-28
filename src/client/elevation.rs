@@ -2,7 +2,7 @@
 //! side reports to the UI and explains the end states. The controller never sends credentials (S6).
 
 use crate::{
-    client::Interface,
+    client::{Interface, LoginConfigHandler},
     ui_session_interface::{InvokeUiSession, Session},
 };
 use base::message_proto::{elevation_status::State, ElevationStatus};
@@ -20,6 +20,14 @@ pub fn on_status<T: InvokeUiSession>(handler: &Session<T>, status: &ElevationSta
     handler.elevation_status(state as i32, status.expires_in_secs, &status.reason);
     if let Some(text) = notice(state, &status.reason) {
         handler.msgbox("custom-nocancel-nook-hasclose", TITLE, text, "");
+    }
+}
+
+/// A connection that fails while a resume grant is held is the controlled side signing out: Windows can take half a
+/// minute before the sign-in server is up, so retry quietly through the restart grace window instead of failing.
+pub fn hold_through_sign_out(lc: &mut LoginConfigHandler) {
+    if !lc.resume_blob.is_empty() && lc.restart_remote_device_at.is_none() {
+        lc.mark_restarting_remote_device();
     }
 }
 
@@ -50,5 +58,15 @@ mod tests {
         assert_eq!(notice(State::None, ""), None);
         assert_eq!(notice(State::Requested, ""), None);
         assert_eq!(notice(State::Granted, ""), None);
+    }
+
+    #[test]
+    fn a_failed_connection_waits_for_the_sign_in_server_only_with_a_resume_grant() {
+        let mut lc = LoginConfigHandler::default();
+        hold_through_sign_out(&mut lc);
+        assert!(!lc.is_restarting_remote_device());
+        lc.resume_blob = vec![1];
+        hold_through_sign_out(&mut lc);
+        assert!(lc.is_restarting_remote_device());
     }
 }

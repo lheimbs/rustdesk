@@ -128,3 +128,6 @@ Known limits (accepted, owner to confirm):
    without a controller, or ask who is online. Per-machine credentials would close the rest.
 9. **A UAC prompt stays open after its connection closed** (Windows cannot close the consent prompt from outside). Answering it
    then approves nothing: the service withdrew the request with the connection (#85).
+10. **Order of the checks (2026-10-28, #96).** For a signed controller the approver check runs before the password, so it is told
+   why it is refused (requirement 5) even though nobody can read the password then; an unsigned controller still learns nothing
+   beyond "Not a trusted controller". The connection manager starts only when the Accept prompt or a resume is due (#97).

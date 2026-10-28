@@ -169,7 +169,7 @@ Unattended access, auto-accept without a prior local click, macOS/Linux controll
 | T-21 | User switch (other user signs in) with a resume grant | Grant void; new Accept click needed |
 | T-22 | Resume after the time limit; after reboot; after service restart | Refused; new Accept needed |
 | T-23 | Resume with a wrong resume secret / replayed proof / wrong controller credential | Refused |
-| T-24 | Sleep and wake at tier 0 and tier 1 | Session continues at its tier |
+| T-24 | Sleep and wake at tier 0 and tier 1 | Session continues at its tier. Known limit (owner, 2026-10-28): a sleep longer than the connection timeout ends tier 1; with a keep-connected grant the session resumes at tier 0, without one it ends (plan 2aj) |
 | T-25 | Service restart during tier 1 | Helper gone; session at tier 0 or ended; no silent re-grant |
 | T-26 | Two users: ID and key pair are the same for both | One ID |
 | T-27 | Egress audit over the whole run (Windows) and `tools/egress-all.sh` | PASS, no new destination |

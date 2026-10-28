@@ -2632,6 +2632,27 @@ impl Connection {
         state.failures = 0;
     }
 
+    /// Refuses the login (logged, reason sent) when the signed-in user may not allow connections.
+    async fn refused_without_approver(&mut self) -> bool {
+        #[cfg(any(target_os = "linux", windows))]
+        if let Err(refusal) = {
+            #[cfg(target_os = "linux")]
+            let r = super::approval_linux::check().await;
+            #[cfg(windows)]
+            let r = super::elevation::approval_check().await;
+            r
+        } {
+            super::connection_log::record(
+                self.inner.id(),
+                "approval-refused",
+                &format!("{} from {}: {}", self.lr.my_id, self.ip, refusal.log_word()),
+            );
+            self.send_login_error(refusal.message()).await;
+            return true;
+        }
+        false
+    }
+
     /// Handover login policy (`login_gate`): a correct one-time password raises the Accept prompt, the click
     /// authorises. A wrong or missing password never reaches the connection manager.
     async fn password_then_click(&mut self) -> bool {
@@ -2644,6 +2665,11 @@ impl Connection {
             if !self.lr.resume_token.is_empty() && self.is_remote() && self.resume_login(c.serial).await {
                 return true;
             }
+        }
+        // A signed controller learns before the password that nobody here may allow it: without an administrator
+        // signed in the one-time password is shown to nobody, so the password error would name the wrong reason.
+        if controller.is_ok() && self.refused_without_approver().await {
+            return true;
         }
         let password_exists = !password::temporary_password().is_empty();
         let supplied_is_empty = self.lr.password.is_empty();
@@ -2694,23 +2720,12 @@ impl Connection {
                     self.update_failure_with_scope(f, true, 0, FailureScope::Default);
                 }
                 // Only an administrator signed in here may be asked (docs/APPROVAL_SPEC.md); nobody else sees a request.
-                #[cfg(any(target_os = "linux", windows))]
-                if let Err(refusal) = {
-                    #[cfg(target_os = "linux")]
-                    let r = super::approval_linux::check().await;
-                    #[cfg(windows)]
-                    let r = super::elevation::approval_check().await;
-                    r
-                } {
-                    super::connection_log::record(
-                        self.inner.id(),
-                        "approval-refused",
-                        &format!("{} from {}: {}", self.lr.my_id, self.ip, refusal.log_word()),
-                    );
-                    self.send_login_error(refusal.message()).await;
+                if self.refused_without_approver().await {
                     return true;
                 }
                 self.awaiting_click = true;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.try_start_cm_ipc();
                 self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), false);
             }
         }
@@ -2733,6 +2748,8 @@ impl Connection {
                 if !self.send_logon_response_and_keep_alive().await {
                     return true;
                 }
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.try_start_cm_ipc();
                 self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), true);
                 true
             }
@@ -3171,12 +3188,9 @@ impl Connection {
                 return false;
             }
 
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if !should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                self.try_start_cm_ipc();
-            }
-
-            // Handover: the one-time password gates the Accept prompt, the click authorises (see `login_gate`).
+            // Handover: the one-time password gates the Accept prompt, the click authorises (see `login_gate`). The
+            // connection manager is started only once a prompt or a resume is due: a refused login must not flash a
+            // window on the signed-in user's desktop.
             return self.password_then_click().await;
         } else if let Some(message::Union::Auth2fa(tfa)) = msg.union {
             // A 2FA response may arrive after click authorization has completed.

@@ -704,6 +704,28 @@ Regression matrix of the approval epic (what each story changed that existing be
 
 Regression surface: every Windows and Linux Accept click (new channel arm in `connection.rs`); the CM card's unauthorised state (Dart); `gtk_sudo` (new entry only, existing entries unchanged).
 
+### 2aj. Owner session at the test machine (2026-10-27/28; epics #52, #55)
+
+Build: branch head plus the fixes below (branch `elevation/resume-wait-signin`), installed in service mode; Linux controller from the same commit; gated test servers.
+
+| Test | Result |
+|---|---|
+| T-01 session rights | PASS: the session's server, CM and tray run as the signed-in user, not elevated, medium integrity; only the service is SYSTEM |
+| T-05 / T-07 lock at tier 0 | PASS: protected-screen notice over the last frame, no lock-screen pixels; typed text did not lift the lock curtain; the view came back after unlock |
+| T-10 grant, E9 lock at tier 1 | PASS: SYSTEM helper running; the controller sees the lock screen; 5 typed characters arrived as exactly 5 password dots |
+| T-24 sleep at tier 1 | **known limit** (owner): a sleep longer than the connection timeout ends the connection and with it tier 1; with a keep-connected grant the controller is back at tier 0 8 s after wake, without one the session ends; no silent re-grant |
+| T-20 sign-out with grant | first run FAIL (#94: Windows needed 31 s to start the sign-in server, the controller gave up after 18 s); after the fix PASS: resumed to the sign-in server 4 s after sign-out, then into the same user's new session at tier 0 |
+| T-21 user switch with grant | PASS: grant ended by the service ("another user signed in"), resume refused, then the approver check refused the standard user |
+| user switch admin ↔ standard user | first run FAIL (#95: the standard user's server refused the service's close, kept the pipe, the new server crash-looped); after the fix PASS in both directions |
+| A4 standard user | PASS: no one-time password shown, only the note that it is for administrators |
+| A2 standard user active | first runs: "Wrong password" (nobody can read the password) and a CM window flashed on every refused attempt; after #96/#97: "Only an administrator can allow this connection", no CM process started |
+| nobody signed in (sign-in server), E13 matrix | PASS: signed controller → "No administrator is signed in at this machine"; other issuer / no credential → refused at hbbs ("Key mismatch" on the controller), never reached the machine |
+| T-15 UAC off | refused, first with the wrong reason (#98: administrators look like standard users without UAC); after the fix "This machine's settings would let a program approve silently…" (proof meaningless). UAC restored and verified |
+
+Fixes: #94 controller keeps retrying through a sign-out while it holds a resume grant (existing restart-reconnect path, 5-minute grace); #95 a user-level server accepts the service's close (service control manager pid); #96 a signed controller hears the approver refusal before the password; #97 the connection manager starts only for a prompt or a resume; #98 an elevated default token (UAC off) counts as administrator for the refusal reason.
+
+Regression surface: `on_establish_connection_error` (one hook, active only with a resume grant); Windows main IPC authorization (one extra accepted peer: the registered service process); the login order for signed controllers (approver check moved ahead of the password; unsigned controllers unchanged); the CM start (later, same function); `session_user_is_admin` (approval only).
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
