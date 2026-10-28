@@ -6,12 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
-import 'package:flutter_hbb/common/widgets/login.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
-import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -467,29 +465,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
           onPressed: () => connectWithToken(isFileTransfer: true)),
     );
   }
-  // note
-  if (isDefaultConn && !bind.isDisableAccount()) {
-    v.add(
-      TTextMenu(
-          child: Text(translate('Note')),
-          onPressed: () async {
-            bool isLogin =
-                bind.mainGetLocalOption(key: 'access_token').isNotEmpty;
-            if (!isLogin) {
-              final res = await loginDialog();
-              if (res != true) return;
-              // Desktop: send message to main window to refresh login status
-              // Web: login is required before connection, so no need to refresh
-              // Mobile: same isolate, no need to send message
-              if (isDesktop) {
-                rustDeskWinManager.call(
-                    WindowType.Main, kWindowRefreshCurrentUser, "");
-              }
-            }
-            showAuditDialog(ffi);
-          }),
-    );
-  }
   // divider
   if (isDefaultConn && (isDesktop || isWebDesktop)) {
     v.add(TTextMenu(child: Offstage(), onPressed: () {}, divider: true));
@@ -505,19 +480,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
           onPressed: () => bind.sessionCtrlAltDel(sessionId: sessionId)),
     );
   }
-  // restart
-  if (isDefaultConn &&
-      perms['restart'] != false &&
-      (pi.platform == kPeerPlatformLinux ||
-          pi.platform == kPeerPlatformWindows ||
-          pi.platform == kPeerPlatformMacOS)) {
-    v.add(
-      TTextMenu(
-          child: Text(translate('Restart remote device')),
-          onPressed: () =>
-              showRestartRemoteDevice(pi, id, sessionId, ffi.dialogManager)),
-    );
-  }
   // insertLock
   if (isDefaultConn && !ffiModel.viewOnly && ffi.ffiModel.keyboard) {
     v.add(
@@ -525,35 +487,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
           child: Text(translate('Insert Lock')),
           onPressed: () => bind.sessionLockScreen(sessionId: sessionId)),
     );
-  }
-  // blockUserInput
-  if (isDefaultConn &&
-      ffi.ffiModel.keyboard &&
-      ffi.ffiModel.permissions['block_input'] != false &&
-      pi.platform == kPeerPlatformWindows) // privacy-mode != true ??
-  {
-    v.add(TTextMenu(
-        child: Obx(() => Text(translate(
-            '${BlockInputState.find(id).value ? 'Unb' : 'B'}lock user input'))),
-        onPressed: () {
-          RxBool blockInput = BlockInputState.find(id);
-          bind.sessionToggleOption(
-              sessionId: sessionId,
-              value: '${blockInput.value ? 'un' : ''}block-input');
-          blockInput.value = !blockInput.value;
-        }));
-  }
-  // switchSides
-  if (isDefaultConn &&
-      isDesktop &&
-      ffiModel.keyboard &&
-      pi.platform != kPeerPlatformAndroid &&
-      versionCmp(pi.version, '1.2.0') >= 0 &&
-      bind.peerGetSessionsCount(id: id, connType: ffi.connType.index) == 1) {
-    v.add(TTextMenu(
-        child: Text(translate('Switch Sides')),
-        onPressed: () =>
-            showConfirmSwitchSidesDialog(sessionId, id, ffi.dialogManager)));
   }
   // refresh
   if (pi.version.isNotEmpty) {

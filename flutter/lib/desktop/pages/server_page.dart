@@ -716,22 +716,6 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable audio'),
                         canModify: canModifyPermission,
                       ),
-                      if (kShowNeverAvailablePermissions)
-                      buildPermissionIcon(
-                        client.recording,
-                        Icons.videocam_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "recording",
-                              enabled: enabled);
-                          setState(() {
-                            client.recording = enabled;
-                          });
-                        },
-                        translate('Enable recording session'),
-                        canModify: canModifyPermission,
-                      ),
                     ]
                   : [
                       buildPermissionIcon(
@@ -794,72 +778,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable file copy and paste'),
                         canModify: canModifyPermission,
                       ),
-                      if (kShowNeverAvailablePermissions)
-                      buildPermissionIcon(
-                        client.restart,
-                        Icons.restart_alt_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "restart",
-                              enabled: enabled);
-                          setState(() {
-                            client.restart = enabled;
-                          });
-                        },
-                        translate('Enable remote restart'),
-                        canModify: canModifyPermission,
-                      ),
-                      if (kShowNeverAvailablePermissions)
-                      buildPermissionIcon(
-                        client.recording,
-                        Icons.videocam_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "recording",
-                              enabled: enabled);
-                          setState(() {
-                            client.recording = enabled;
-                          });
-                        },
-                        translate('Enable recording session'),
-                        canModify: canModifyPermission,
-                      ),
                       // only windows support block input
-                      if (isWindows && kShowNeverAvailablePermissions)
-                        buildPermissionIcon(
-                          client.blockInput,
-                          Icons.block,
-                          (enabled) {
-                            bind.cmSwitchPermission(
-                                connId: client.id,
-                                name: "block_input",
-                                enabled: enabled);
-                            setState(() {
-                              client.blockInput = enabled;
-                            });
-                          },
-                          translate('Enable blocking user input'),
-                          canModify: canModifyPermission,
-                        ),
-                      if (kShowNeverAvailablePermissions &&
-                          bind.mainSupportedPrivacyModeImpls() != '[]')
-                        buildPermissionIcon(
-                          client.privacyMode,
-                          Icons.visibility_off,
-                          (enabled) {
-                            bind.cmSwitchPermission(
-                                connId: client.id,
-                                name: "privacy_mode",
-                                enabled: enabled);
-                            setState(() {
-                              client.privacyMode = enabled;
-                            });
-                          },
-                          translate('Enable privacy mode'),
-                          canModify: canModifyPermission,
-                        )
                     ],
             ),
           ),
@@ -870,9 +789,6 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
 }
 
 const double buttonBottomMargin = 8;
-
-/// Handover: remote restart, recording, block input and privacy mode are never available (the server refuses them).
-const bool kShowNeverAvailablePermissions = false;
 
 class _CmControlPanel extends StatelessWidget {
   final Client client;
@@ -1092,15 +1008,6 @@ class _CmControlPanel extends StatelessWidget {
           );
         }),
         Offstage(
-          offstage: !client.fromSwitch,
-          child: buildButton(context,
-              color: Colors.purple,
-              onClick: () => handleSwitchBack(context),
-              icon: Icon(Icons.reply, color: Colors.white),
-              text: "Switch Sides",
-              textColor: Colors.white),
-        ),
-        Offstage(
           offstage: !showElevation,
           child: buildButton(
             context,
@@ -1298,10 +1205,6 @@ class _CmControlPanel extends StatelessWidget {
     if (await bind.cmGetClientsLength() == 0) {
       windowManager.close();
     }
-  }
-
-  void handleSwitchBack(BuildContext context) {
-    bind.cmSwitchBack(connId: client.id);
   }
 
   void handleVoiceCall(bool accept) {

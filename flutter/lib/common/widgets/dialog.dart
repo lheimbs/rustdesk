@@ -1262,37 +1262,6 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
   });
 }
 
-void showRestartRemoteDevice(PeerInfo pi, String id, SessionID sessionId,
-    OverlayDialogManager dialogManager) async {
-  final res = await dialogManager
-      .show<bool>((setState, close, context) => CustomAlertDialog(
-            title: Row(children: [
-              Icon(Icons.warning_rounded, color: Colors.redAccent, size: 28),
-              Flexible(
-                  child: Text(translate("Restart remote device"))
-                      .paddingOnly(left: 10)),
-            ]),
-            content: Text(
-                "${translate('Are you sure you want to restart')} \n${pi.username}@${pi.hostname}($id) ?"),
-            actions: [
-              dialogButton(
-                "Cancel",
-                icon: Icon(Icons.close_rounded),
-                onPressed: close,
-                isOutline: true,
-              ),
-              dialogButton(
-                "OK",
-                icon: Icon(Icons.done_rounded),
-                onPressed: () => close(true),
-              ),
-            ],
-            onCancel: close,
-            onSubmit: () => close(true),
-          ));
-  if (res == true) bind.sessionRestartRemoteDevice(sessionId: sessionId);
-}
-
 showSetOSPassword(
   SessionID sessionId,
   bool login,
@@ -1418,35 +1387,6 @@ Widget buildNoteTextField({
     controller: controller,
     focusNode: focusNode,
   ).workaroundFreezeLinuxMint();
-}
-
-showAuditDialog(FFI ffi) async {
-  final controller = TextEditingController(
-      text: bind.sessionGetLastAuditNote(sessionId: ffi.sessionId));
-  ffi.dialogManager.show((setState, close, context) {
-    submit() {
-      var text = controller.text;
-      bind.sessionSendNote(sessionId: ffi.sessionId, note: text);
-      close();
-    }
-
-    return CustomAlertDialog(
-      title: Text(translate('Note')),
-      content: SizedBox(
-          width: 250,
-          height: 120,
-          child: buildNoteTextField(
-            controller: controller,
-            onEscape: close,
-          )),
-      actions: [
-        dialogButton('Cancel', onPressed: close, isOutline: true),
-        dialogButton('OK', onPressed: submit)
-      ],
-      onSubmit: submit,
-      onCancel: close,
-    );
-  });
 }
 
 bool allowAskForNoteAtEndOfConnection(FFI? ffi, bool closedByControlling) {
@@ -1662,27 +1602,6 @@ Future<bool?> _showConnEndAuditDialogCloseCanceled({
       actions: buttons,
       onSubmit: submit,
       onCancel: cancel,
-    );
-  });
-}
-
-void showConfirmSwitchSidesDialog(
-    SessionID sessionId, String id, OverlayDialogManager dialogManager) async {
-  dialogManager.show((setState, close, context) {
-    submit() async {
-      await bind.sessionSwitchSides(sessionId: sessionId);
-      closeConnection(id: id);
-    }
-
-    return CustomAlertDialog(
-      content: msgboxContent('info', 'Switch Sides',
-          'Please confirm if you want to share your desktop?'),
-      actions: [
-        dialogButton('Cancel', onPressed: close, isOutline: true),
-        dialogButton('OK', onPressed: submit),
-      ],
-      onSubmit: submit,
-      onCancel: close,
     );
   });
 }

@@ -4089,23 +4089,10 @@ impl Connection {
                     }
                     #[cfg(feature = "flutter")]
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    Some(misc::Union::SwitchSidesRequest(s)) => {
-                        if let Ok(uuid) = uuid::Uuid::from_slice(&s.uuid.to_vec()[..]) {
-                            if crate::server::insert_pending_switch_sides_uuid(
-                                self.lr.my_id.clone(),
-                                uuid.clone(),
-                            ) {
-                                crate::run_me(vec![
-                                    "--connect",
-                                    &self.lr.my_id,
-                                    "--switch_uuid",
-                                    uuid.to_string().as_ref(),
-                                ])
-                                .ok();
-                            }
-                            self.on_close("switch sides", false).await;
-                            return false;
-                        }
+                    Some(misc::Union::SwitchSidesRequest(_)) => {
+                        // Switch sides is not available (`switch_sides_allowed`): never start an
+                        // outgoing connection on the controller's request (#99).
+                        log::warn!("Ignored a switch sides request: not available");
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     Some(misc::Union::ChangeResolution(r)) => {

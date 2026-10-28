@@ -286,23 +286,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       menu.insert(1, splitAction);
     }
 
-    if (perms['restart'] != false &&
-        (pi.platform == kPeerPlatformLinux ||
-            pi.platform == kPeerPlatformWindows ||
-            pi.platform == kPeerPlatformMacOS)) {
-      menu.add(MenuEntryButton<String>(
-        childBuilder: (TextStyle? style) => Text(
-          translate('Restart remote device'),
-          style: style,
-        ),
-        proc: () => showRestartRemoteDevice(
-            pi, peerId ?? '', sessionId, ffi.dialogManager),
-        padding: padding,
-        dismissOnClicked: true,
-        dismissCallback: cancelFunc,
-      ));
-    }
-
     if (perms['keyboard'] != false && !ffi.ffiModel.viewOnly) {
       menu.add(RemoteMenuEntry.insertLock(sessionId, padding,
           dismissFunc: cancelFunc));
