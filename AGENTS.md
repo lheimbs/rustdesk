@@ -272,6 +272,8 @@ keys `hbb_common` still reads, so callers get the whole set from that one path.
 * `third_party/` every git-sourced dependency, vendored by `tools/vendor-forks.sh`; never edited by hand.
 * `server/` `build.sh` (pinned upstream commit plus patches 0001-0005 and the credential crate), `systemd/` hardened
   units, `render-units.sh`, `test-system-units.sh` (root; verifies the units under a system manager), `README.md`.
+* `tools/install-linux.sh` + `res/handover.service` install the lite build as the Linux controlled side (systemd, plan 2ak);
+  `.github/handover-ci/` the fork's own CI workflow, parked until Actions is enabled (#92).
 * `tools/` `build-linux.sh`, `build-windows.ps1`, `sign-windows.ps1`, `trust-windows-cert.ps1`, `egress-check.sh`
   (modes ui, server, down, offline, wrongkey, selftest), `egress-all.sh` (pre-release), `egress-analyze.py`,
   `egress-windows.ps1`, `vendor-forks.sh`, `gen-bridge.sh`.

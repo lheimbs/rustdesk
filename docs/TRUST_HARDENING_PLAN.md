@@ -726,6 +726,22 @@ Fixes: #94 controller keeps retrying through a sign-out while it holds a resume 
 
 Regression surface: `on_establish_connection_error` (one hook, active only with a resume grant); Windows main IPC authorization (one extra accepted peer: the registered service process); the login order for signed controllers (approver check moved ahead of the password; unsigned controllers unchanged); the CM start (later, same function); `session_user_is_admin` (approval only).
 
+### 2ak. Remote-only session: UI rework part 1, Linux service install, CI (2026-10-28; #99, #58, #92, #93)
+
+No one at the Windows test machine; everything below ran on the Linux VM.
+
+| Item | Result |
+|---|---|
+| #99 UI crawl, controller and Linux lite | removed: Switch Sides (toolbar, CM button; the controlled side now ignores a `SwitchSidesRequest` instead of starting `--connect`), Restart remote device, Block user input, Note, the flag-hidden CM permission icons, the WebRTC checkbox, port-forward reuse, Telegram bot; screenshots of both new builds: gone; open questions for the owner in #99 |
+| #58 real install path on Linux | `tools/install-linux.sh` + `res/handover.service`: bundle under `/usr/lib/handover`, root unit; on a seat0 x11 login session (logind, VT switched) the service started `--server` as the seat user with that session's `DISPLAY`/`XAUTHORITY`; a signed controller connected, the card appeared on the seat, sudo proof as that user, `approval: granted`, desktop visible; uninstall leaves no unit, bundle, service config, logs or sockets |
+| seat lookup during a session change | **known limit (upstream fallback)**: while seat0 has no active session, `_get_values_of_seat0` takes any other active graphical session, so for about 7 s the service ran `--server` for another user; it moved to the seat user by itself. Approval still needs that user to be a password sudoer at that session, so it cannot be used to approve for someone else |
+| tray on Linux without libayatana-appindicator | `--tray` panics (thread), service and connection unaffected; listed as an install dependency |
+| egress, new bundles (full + lite), admission servers | `tools/egress-all.sh 60`: selftest detects its leak; server, ui, down, offline, wrongkey, lite: PASS |
+| CI (#92) | workflow written (`.github/handover-ci/`, parked: the token cannot write `.github/workflows/`, and Actions stays off until #91); its unit-test set and `cargo deny check sources` pass locally |
+| #93 | feasibility analysis posted on the issue (deployment file, trust on install); decision is the owner's |
+
+Regression surface: controller toolbar and settings (Dart, deletions only); CM permission panel (deletions); `connection.rs` `SwitchSidesRequest` arm (no outgoing connection any more); new files only for the Linux install and CI; `tools/gen-bridge.sh` takes `FLUTTER_322_BIN`.
+
 ## 3. Design decisions
 
 **D1. Inline `hbb_common`** (delete the submodule, commit its files as a workspace member). Needed because the
