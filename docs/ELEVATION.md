@@ -1,6 +1,6 @@
 # User rights and administrator access on Windows (operator's guide)
 
-Design: `docs/ELEVATION_SPEC.md` (decision D20). Measurements: `docs/TRUST_HARDENING_PLAN.md` sections 2s-2ab. This file says
+Design: `docs/ELEVATION_SPEC.md` (decision D20). Measurements: `docs/TRUST_HARDENING_PLAN.md` sections 2s-2ab, the approval cases 2ae-2ai and the owner's final run 2aj (2026-10-27/28). This file says
 what a session can do on a Windows machine, how administrator access is asked for and given, how it ends, and what to
 tell the person at the machine.
 
@@ -50,9 +50,9 @@ credential. On Linux the lite build is the controlled side; the full Linux build
    toolbar shows "Administrator access requested".
 2. The connection manager on the machine comes to the front and shows the request: who asks, what it allows, the time
    limit, **Allow** and **Deny**. The person has 60 seconds; without an answer the request expires.
-3. **Allow** opens the Windows prompt ("Do you want to allow this app to make changes..." for the program). An
-   administrator answers Yes; a standard user is asked by Windows for an administrator's password (not tested yet on the
-   test machine). Declining it ends the request.
+3. **Allow** opens the Windows prompt ("Do you want to allow this app to make changes..." for the program). The
+   administrator answers Yes; declining it ends the request. (A standard user never gets this far: a connection is only
+   allowed by a signed-in administrator, see above.)
 4. When Windows has confirmed it, the controller's toolbar shows **"Administrator access mm:ss"** counting down and the
    connection manager shows **"Administrator access is active"** with a **Stop administrator access** button.
 
@@ -75,12 +75,22 @@ there. Say this plainly to the person before they tick it. It ends after 15 minu
 *Stop administrator access* or *Drop administrator access*, and when the machine restarts. Without the box a sign-out ends
 the session as before. Connection-log lines: `resume-accepted`, `resume-refused`.
 
+What the controller sees (measured 2026-10-28): after a sign-out it is back within a few seconds, at the sign-in screen;
+when the same user signs in again it continues in the new session **at tier 0**: administrator access has to be asked
+for again. When a *different* user signs in, the service ends the grant ("another user signed in"), the controller's
+return is refused, and a new connection needs that user's approval like any other (a standard user cannot give it).
+Sleep: a sleep longer than the connection timeout ends the connection and with it administrator access. With the box
+ticked the controller comes back at tier 0 a few seconds after wake; without it the session ends. Nothing is re-granted
+silently.
+
 ## What to tell the person at the machine
 
 - "You will see a request for administrator access with Allow and Deny. If you allow it, Windows asks you to confirm.
   Only then can I answer Windows prompts and see the lock screen. It ends by itself after 30 minutes, and you can stop it
   at any time with *Stop administrator access* or by disconnecting me."
 - "Before that, I can only do what you can do without answering a Windows prompt, and I cannot see your lock screen."
+- When they accept the connection itself, Windows asks them to confirm as well (that is how the machine checks an
+  administrator allowed it). "Click Accept, then Yes in the Windows prompt."
 - Never ask the person for a password; the program has no way to take one from the controller.
 
 ## Processes and files (Windows)
@@ -88,7 +98,8 @@ the session as before. Connection-log lines: `resume-accepted`, `resume-refused`
 | Process | Runs as | When |
 |---|---|---|
 | `Handover.exe --service` | LocalSystem, session 0 | always (installed); holds the machine's identity and the grant |
-| `Handover.exe --server`, `--cm`, `--tray`, the main window | the signed-in user, not elevated | while someone is signed in |
+| `Handover.exe --server`, `--tray`, the main window | the signed-in user, not elevated | while someone is signed in |
+| `Handover.exe --cm` (connection manager) | the signed-in user, not elevated | only while a request waits for an answer or a session runs (not for refused attempts) |
 | `Handover.exe --portable-service --portable-service-shmem-name=... --portable-service-server-pid=...` | SYSTEM in the user's session | only during administrator access |
 | `Handover.exe --elevation-proof <nonce>` | the approving administrator, elevated | about a second after the Windows prompt was answered Yes |
 
@@ -114,5 +125,15 @@ access. It is not read from `.env`.
 - A program of the signed-in user can block administrator access (not gain it) by occupying a pipe name; the request
   then ends with "ended on the remote machine".
 - The "protected screen" notice can be closed by the controller; it comes back with the next protected period.
-- Not yet tested on a real machine: a standard user answering the prompt with an administrator's password, a machine with
-  a changed UAC policy, sleep and wake during administrator access.
+- Sleep and wake end administrator access (above); this is accepted, not a fault.
+- The Windows prompt is only as strong as the UAC setting. Windows' default ("notify me only when apps try to make
+  changes") is accepted; managed machines should set "Always notify" by policy (Group Policy or Intune), see
+  `docs/APPROVAL_SPEC.md` section 9.2. With UAC switched off every connection is refused (measured).
+- Revoking a controller credential stops new connections and returns, not a session already running: disconnect it too.
+
+## Measured (final run 2026-10-27/28, plan section 2aj)
+
+Session rights (user's rights, medium integrity; only the service is SYSTEM); lock screen at tier 0 (notice, no input) and
+at tier 1 (visible, typing arrives); grant, keep connected through sign-out, user switch, nobody signed in, a standard user
+signed in, UAC off: all as described above. The test matrix with each case is in `docs/ELEVATION_SPEC.md` section 7 and
+the plan.
