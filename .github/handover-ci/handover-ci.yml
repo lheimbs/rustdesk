@@ -1,0 +1,136 @@
+# Handover CI (#92): checks every push to the Handover branches. No secrets, lab values only: the issuer, server key
+# and credentials are created in the job and thrown away. Every action is pinned by commit; downloads by SHA-256.
+# Build-time egress of this workflow: GitHub (checkout), crates.io, pub.dev, the pinned Flutter archives
+# (storage.googleapis.com) and the pinned rustdesk-server commit (github.com). The products themselves are checked
+# offline by tools/egress-all.sh.
+name: Handover CI
+
+on:
+  push:
+    branches: ["handover/**", "client/**", "build/**", "docs/**", "security/**", "elevation/**", "approval/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  RUST_TOOLCHAIN: "1.75.0"
+  FLUTTER_3245_SHA256: a7c82f551a9eae018e078f6bb186171e5a77920d35a3d75a61d9a593d0a9e4ae
+  FLUTTER_3223_SHA256: 9c5f70ba118b9163552144901a2efd91d40b22a68a04e67271d6a5ad936e8368
+
+jobs:
+  rust:
+    name: Unit tests, cargo-deny, cargo-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake nasm ninja-build pkg-config libclang-dev libgtk-3-dev \
+            libayatana-appindicator3-dev libasound2-dev libpulse-dev libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxdo-dev libxfixes-dev libvpx-dev libyuv-dev libaom-dev libopus-dev libpam0g-dev libunwind-dev
+      - name: Rust toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal && rustup toolchain install stable --profile minimal
+      - name: Credential crate and shared crates
+        run: cargo test --locked -p handover-cred -p base -p hbb_common --lib
+      - name: Security units of the app library
+        run: >
+          cargo test --locked --features flutter,linux-pkg-config --lib --
+          controller_auth login_gate approval elevation sign_broker dangerous_features connection_log kx_tests
+          test_secure_tcp lite switch_sides
+      - name: cargo-deny (source policy, C1)
+        run: |
+          cargo +stable install --locked cargo-deny --version 0.20.2
+          cargo +stable deny check sources
+      - name: cargo-audit (report; triage in server/README.md and the plan)
+        continue-on-error: true
+        run: |
+          cargo +stable install --locked cargo-audit --version 0.22.0
+          cargo +stable audit
+
+  server:
+    name: Servers (build, units under systemd)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build hbbs/hbbr from the pinned commit
+        run: server/build.sh
+      - name: Hardened units under the system manager
+        run: sudo server/test-system-units.sh server/build/bin
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: servers
+          path: server/build/bin/
+          retention-days: 3
+
+  linux:
+    name: Linux bundles, vendor scan, egress
+    needs: server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: servers
+          path: server/build/bin
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake nasm ninja-build pkg-config libclang-dev libgtk-3-dev \
+            libayatana-appindicator3-dev libasound2-dev libpulse-dev libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxdo-dev libxfixes-dev libvpx-dev libyuv-dev libaom-dev libopus-dev libpam0g-dev libunwind-dev \
+            xvfb strace tcpdump dbus-x11 binutils
+          chmod +x server/build/bin/*
+          # unprivileged user namespaces (egress check, reproducible build mount)
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Flutter 3.24.5 and 3.22.3 (pinned archives)
+        run: |
+          for v in 3.24.5:$FLUTTER_3245_SHA256 3.22.3:$FLUTTER_3223_SHA256; do
+            ver=${v%%:*}; sum=${v#*:}; f=flutter_linux_${ver}-stable.tar.xz
+            curl -fsSLo "$RUNNER_TEMP/$f" "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/$f"
+            echo "$sum  $RUNNER_TEMP/$f" | sha256sum -c -
+            mkdir -p "$RUNNER_TEMP/flutter-$ver" && tar -xJf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP/flutter-$ver"
+            git config --global --add safe.directory "$RUNNER_TEMP/flutter-$ver/flutter"
+          done
+          echo "$RUNNER_TEMP/flutter-3.24.5/flutter/bin" >> "$GITHUB_PATH"
+          echo "FLUTTER_322_BIN=$RUNNER_TEMP/flutter-3.22.3/flutter/bin" >> "$GITHUB_ENV"
+      - name: Rust toolchain and bridge generator
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          cargo +"$RUST_TOOLCHAIN" install --locked flutter_rust_bridge_codegen --version 1.80.1
+          cargo +"$RUST_TOOLCHAIN" install --locked cargo-expand --version 1.0.95
+      - name: Lab issuer and credentials (throwaway)
+        run: |
+          cargo build --locked --release -p handover-cred
+          L=$RUNNER_TEMP/lab; mkdir -p "$L"
+          HANDOVER_CA_PASSPHRASE=$(openssl rand -hex 16) target/release/handover-ca init "$L/ca"
+          echo "LAB=$L" >> "$GITHUB_ENV"
+      - name: Build the full and the lite bundle
+        run: |
+          export HANDOVER_RENDEZVOUS_SERVER=10.77.0.1 HANDOVER_SERVER_KEY=$(head -c 32 /dev/urandom | base64)
+          export HANDOVER_CONTROLLER_CA=$(cat "$LAB/ca/ca.pub")
+          tools/gen-bridge.sh
+          tools/build-linux.sh "$RUNNER_TEMP/full"
+          HANDOVER_LITE=1 tools/build-linux.sh "$RUNNER_TEMP/lite"
+          for v in full lite; do (cd "$RUNNER_TEMP/$v" && tar -xzf handover-linux-x64*.tar.gz); done
+      - name: Vendor-host scan of every bundle file
+        run: |
+          for v in full lite; do
+            if find "$RUNNER_TEMP/$v/bundle" -type f -exec strings -a {} + | grep -E 'rustdesk\.(com|cn)'; then
+              echo "vendor host found in the $v bundle"; exit 1
+            fi
+          done
+      - name: Egress, all scenarios plus the self-test
+        run: |
+          export HANDOVER_CA_PUB=$(cat "$LAB/ca/ca.pub") HANDOVER_REVOKED=$RUNNER_TEMP/revoked; : > "$HANDOVER_REVOKED"
+          BUNDLE=$RUNNER_TEMP/full/bundle/handover LITE_BUNDLE=$RUNNER_TEMP/lite/bundle/handover \
+            SERVER_BIN=server/build/bin tools/egress-all.sh 60
+      - name: The build left the tracked tree unchanged (third_party, lockfiles)
+        run: git diff --exit-code

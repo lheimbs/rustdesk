@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH=$HOME/.cargo/bin:$HOME/.local/share/mise/shims:$PATH
-F322=$(mise where flutter@3.22.3)/bin
+F322=${FLUTTER_322_BIN:-$(mise where flutter@3.22.3)/bin}   # FLUTTER_322_BIN: a Flutter 3.22.3 bin dir without mise (CI)
 
 # A private temp directory (#88), and the codegen's own dependency resolution pinned in tools/gen-bridge.pubspec.lock:
 # the generator runs build_runner and its plugins, so they must not float. After a change to flutter/pubspec.yaml,
